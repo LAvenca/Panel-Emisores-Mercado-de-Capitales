@@ -284,4 +284,48 @@ for producto in orden_productos:
         es_pais = emisor in soberanos_requeridos
         bg_card_base = "from-gray-900 to-blue-950/10 border-blue-500/30" if es_pais else "from-gray-900 to-gray-900/40 border-gray-800"
         tiene_alerta = any(n["prioritaria"] for n in noticias)
-        
+        borde_caja = f"border-red-500/50 bg-gradient-to-b from-gray-900 to-red-950/20 shadow-red-950/30 shadow-lg" if tiene_alerta else f"border-gray-800 bg-gradient-to-b {bg_card_base} shadow-lg"
+
+        html_lines.append(f"<div class='rounded-xl border p-5 flex flex-col justify-between hover:border-gray-700 transition duration-300 {borde_caja}'>")
+        html_lines.append("<div>")
+        html_lines.append("<div class='pb-2 mb-3 border-b border-gray-800/60 flex justify-between items-center'>")
+        html_lines.append("<div class='flex items-center gap-2'>")
+        html_lines.append(f"<h3 class='text-sm font-bold text-gray-100 tracking-wide uppercase'>{html.escape(emisor)}</h3>")
+        if es_pais:
+            html_lines.append("<span class='text-[9px] px-1.5 py-0.2 bg-blue-500/10 text-blue-400 rounded-md border border-blue-500/20 font-mono'>Soberano</span>")
+        html_lines.append("</div>")
+        if tiene_alerta:
+            html_lines.append("<span class='bg-red-500/20 text-red-400 border border-red-500/30 text-[9px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider animate-pulse'>Rating Alert</span>")
+        html_lines.append("</div>")
+        html_lines.append("<div class='space-y-2'>")
+
+        for n in noticias:
+            bg_item = "bg-red-500/10 border-red-500 text-red-200 font-medium" if n["prioritaria"] else "bg-gray-850 border-gray-700 text-gray-300"
+            html_lines.append(f"<div class='border-l-2 p-2 rounded-r text-xs {bg_item}'>")
+            html_lines.append("<div class='flex justify-between items-start gap-2 mb-1'>")
+            html_lines.append(f"<a href='{n['link']}' target='_blank' class='hover:text-blue-400 line-clamp-3 font-medium flex-1'>{html.escape(n['titulo'])}</a>")
+            html_lines.append(f"<span class='text-[9px] text-gray-500 bg-gray-900 px-1.5 py-0.5 rounded border border-gray-800 font-mono shrink-0 whitespace-nowrap'>{html.escape(n['fecha'])}</span>")
+            html_lines.append("</div>")
+            html_lines.append("<div class='text-[9px] text-gray-500 font-mono'>")
+            html_lines.append(f"<span>Origen: {html.escape(n['fuente'])}</span>")
+            html_lines.append("</div></div>")
+            
+        html_lines.append("</div></div></div>")
+    html_lines.append("</div></section>")
+
+if total_visibles == 0:
+    html_lines.append("<div class='bg-gray-900 border border-gray-800 rounded-xl p-12 text-center max-w-xl mx-auto my-12'>")
+    html_lines.append("<p class='text-emerald-400 font-medium text-lg mb-2'>☕ Todo bajo control</p>")
+    html_lines.append("<p class='text-gray-400 text-sm'>No se registran alertas de crédito ni movimientos para tu portafolio de Excel hoy.</p>")
+    html_lines.append("</div>")
+
+html_lines.append("<footer class='mt-16 pt-6 border-t border-gray-900 text-center text-xs text-gray-600'>")
+html_lines.append("Filtro de Crédito Customizado Multiregional Soberano e Institucional.")
+html_lines.append("</footer></div></body></html>")
+
+html_content = "\n".join(html_lines)
+
+# --- ESCRIBIR EL ARCHIVO FINAL EN EL REPOSITORIO ---
+with open("index.html", "w", encoding="utf-8") as f:
+    f.write(html_content)
+print("¡Fichero index.html unificado y completado con éxito!")
