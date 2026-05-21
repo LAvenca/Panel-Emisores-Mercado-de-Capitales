@@ -127,7 +127,7 @@ for portal in PAGINAS_PRIORITARIAS:
                     es_prioritaria = bool(patron_riesgo.search(linea)) or "moody" in portal["fuente"].lower()
                     
                     if linea in links_globales_procesados: continue
-                    links_globales_procesados.add(linea)
+                    links_globales_processed.add(linea)
                     
                     datos_centralizados[prod][emisor]["noticias"].append({
                         "titulo": linea,
@@ -143,11 +143,9 @@ print("Fase 2: Ejecutando rastreo complementario en la red global...")
 for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
     if prod not in datos_centralizados: continue
     
-    # Si las fuentes prioritarias ya capturaron suficiente información del emisor, bajamos la intensidad para evitar saturación
     limite_prensa = 2 if len(datos_centralizados[prod][emisor]["noticias"]) > 0 else 4
     
     emisor_encoded = urllib.parse.quote(emisor)
-    # Canales de rastreo en la red: Plaza Perú, Plaza México y Servidor de Estados Unidos (USA Global)
     urls_red = [
         f"https://news.google.com/rss/search?q={emisor_encoded}%20Peru&hl=es-419&gl=PE&ceid=PE:es-419",
         f"https://news.google.com/rss/search?q={emisor_encoded}%20Mexico&hl=es-419&gl=MX&ceid=MX:es-419",
@@ -187,9 +185,7 @@ for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
 # --- FASE 3: ORDENACIÓN DE ALERTA DE CRÉDITO Y FILTRADO ---
 for prod in orden_productos:
     for emisor in datos_centralizados[prod]:
-        # Las alertas críticas (upgrades, downgrades, hechos smv) se mueven estrictamente arriba
         datos_centralizados[prod][emisor]["noticias"].sort(key=lambda x: x["prioritaria"], reverse=True)
-        # Cortamos a las 5 mejores del día por emisor
         datos_centralizados[prod][emisor]["noticias"] = datos_centralizados[prod][emisor]["noticias"][:5]
 
 # --- FASE 4: MAQUETADO DE LA TERMINAL HTML ---
@@ -220,8 +216,9 @@ html_content = f"""<!DOCTYPE html>
 total_visibles = 0
 for producto in orden_productos:
     emisores_del_producto = datos_centralizados[producto]
-    contiene_data = any(contenido["noticias"] for emisor, contenido in emisores_del_producto.items())
-    if not contiene_data: continue
+    # CORREGIDO AQUÍ: Variable alineada con el flujo lógico
+    contiene_noticias_activas = any(contenido["noticias"] for emisor, contenido in emisores_del_producto.items())
+    if not contiene_noticias_activas: continue
 
     badge_color = "text-blue-400 border-blue-500/30 bg-blue-500/5"
     if producto == "Renta Variable": badge_color = "text-purple-400 border-purple-500/30 bg-purple-500/5"
