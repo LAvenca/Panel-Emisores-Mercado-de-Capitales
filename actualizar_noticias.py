@@ -3,7 +3,7 @@ import urllib.parse
 import zipfile
 import re
 import ssl
-
+import html
 def leer_emisores_y_productos_estricto(ruta_archivo):
     mapping = {}
     try:
@@ -113,12 +113,12 @@ nemonicos_contingencia = {
 
 links_globales_procesados = set()
 
-# CONTEXTO SSL: Desactivación estricta de validación para evadir bloqueos de cortafuegos públicos
+# CONTEXTO SSL: Desactivación estricta de validación para evadir bloqueos de cortafuegos gubernamentales
 contexto_ssl_seguro = ssl.create_default_context()
 contexto_ssl_seguro.check_hostname = False
 contexto_ssl_seguro.verify_mode = ssl.CERT_NONE
 
-# --- FASE 1: RASTREO AISLADO EN ENLACES CORE BURSÁTILES ---
+# --- FASE 1: RASTREO ROBUSTO EN ENLACES CORE BURSÁTILES ---
 print("Fase 1: Extrayendo información de portales bursátiles oficiales de manera aislada...")
 PAGINAS_PRIORITARIAS = [
     {"url": "https://www.bvl.com.pe/emisores/noticias-emisores", "fuente": "BVL Oficial"},
@@ -129,8 +129,7 @@ PAGINAS_PRIORITARIAS = [
 for portal in PAGINAS_PRIORITARIAS:
     try:
         req = urllib.request.Request(portal["url"], headers=HEADERS_NATIVOS)
-        # Timeout corto de 6 segundos para evitar que un bloqueo de la entidad congele el workflow
-        with urllib.request.urlopen(req, context=contexto_ssl_seguro, timeout=6) as response:
+        with urllib.request.urlopen(req, context=contexto_ssl_seguro, timeout=7) as response:
             html_puro = response.read().decode('utf-8', errors='ignore')
         
         texto_limpio = re.sub(r'<script[^>]*>([\s\S]*?)</script>|<style[^>]*>([\s\S]*?)</style>', '', html_puro)
@@ -155,7 +154,12 @@ for portal in PAGINAS_PRIORITARIAS:
                     if linea in links_globales_procesados: continue
                     links_globales_procesados.add(linea)
                     
-                    titulo_limpio = linea.split(" - ")[0].strip()
+                    # BLINDADO CONTRA CORTES: Extracción segura de títulos sin romper por guiones
+                    titulo_limpio = linea
+                    if " - " in linea:
+                        partes = linea.split(" - ")
+                        if len(partes) > 0 and partes[0].strip():
+                            titulo_limpio = partes[0].strip()
                     
                     datos_centralizados[prod][emisor]["noticias"].append({
                         "titulo": titulo_limpio,
@@ -165,7 +169,7 @@ for portal in PAGINAS_PRIORITARIAS:
                         "prioritaria": es_prioritaria
                     })
     except Exception as e:
-        print(f"Canal core diferido de forma segura: {portal['fuente']}")
+        print(f"Canal core diferido de forma segura")
 
 # --- FASE 2: RASTREO MULTI-REGIONAL SEGURO (Google News + Bloomberg Línea) ---
 print("Fase 2: Ejecutando consultas cruzadas en la red global...")
@@ -225,8 +229,15 @@ for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
                 es_prioritaria = bool(patron_riesgo.search(titulo)) or "bloomberg" in fuente.lower() or is_soberano
                 fecha_limpia = pub_date[:11].strip() if pub_date else "Hoy"
                 
+                # Formateo seguro de títulos de red
+                titulo_final = titulo
+                if " - " in titulo:
+                    partes_t = titulo.split(" - ")
+                    if len(partes_t) > 0 and partes_t[0].strip():
+                        titulo_final = partes_t[0].strip()
+                
                 datos_centralizados[prod][emisor]["noticias"].append({
-                    "titulo": titulo.split(" - ")[0].strip(),
+                    "titulo": titulo_final,
                     "link": link,
                     "fuente": fuente,
                     "fecha": fecha_limpia,
@@ -340,7 +351,7 @@ html_content += """
     </div>
 </body>
 </html>
-  # --- ESCRIBIR EL ARCHIVO FINAL EN EL REPOSITORIO ---
+# --- ESCRIBIR EL ARCHIVO FINAL EN EL REPOSITORIO ---
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html_content)
-print("¡Fichero index.html unificado y completado con éxito con protección ante bloqueos!")          
+print("¡Fichero index.html unificado y completado con éxito con protección ante bloqueos!")
