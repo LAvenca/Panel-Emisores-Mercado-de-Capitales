@@ -136,15 +136,13 @@ for portal in PAGINAS_PRIORITARIAS:
                         "prioritaria": es_prioritaria
                     })
     except Exception as e:
-        # Tolerancia activa: si falla un link, lo reporta en consola y salta al siguiente de forma limpia
-        print(f"Aviso: Portal {portal['fuente']} no disponible temporalmente. Saltando de forma segura...")
+        print(f"Portal diferido {portal['fuente']}")
 
 # --- FASE 2: RASTREO COMPLEMENTARIO EN LA RED (Google News Perú + México + USA Global) ---
 print("Fase 2: Ejecutando rastreo complementario en la red global...")
 for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
     if prod not in datos_centralizados: continue
     
-    # Si las fuentes prioritarias no encontraron nada, abrimos la cobertura a 4 noticias de la red
     limite_prensa = 2 if len(datos_centralizados[prod][emisor]["noticias"]) > 0 else 4
     
     emisor_encoded = urllib.parse.quote(emisor)
@@ -218,7 +216,7 @@ html_content = f"""<!DOCTYPE html>
 total_visibles = 0
 for producto in orden_productos:
     emisores_del_producto = datos_centralizados[producto]
-    contiene_noticias_activas = any(contenido["noticias"] for emisor, contenido in Comic_del_producto := emisores_del_producto.items())
+    contiene_noticias_activas = any(contenido["noticias"] for emisor, contenido in emisores_del_producto.items())
     if not contiene_noticias_activas: continue
 
     badge_color = "text-blue-400 border-blue-500/30 bg-blue-500/5"
@@ -280,7 +278,9 @@ html_content += """
     </div>
 </body>
 </html>
-# Corrección de la variable de renderizado al final del archivo
+"""
+
+# --- ESCRIBIR EL ARCHIVO FINAL EN EL REPOSITORIO ---
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html_content)
 print("¡Fichero index.html unificado y completado con éxito!")
