@@ -280,3 +280,7 @@ html_content += """
     </div>
 </body>
 </html>
+# Corrección de la variable de renderizado al final del archivo
+with open("index.html", "w", encoding="utf-8") as f:
+    f.write(html_content)
+print("¡Fichero index.html unificado y completado con éxito!")
