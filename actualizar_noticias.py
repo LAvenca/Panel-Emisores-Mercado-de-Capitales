@@ -328,3 +328,7 @@ html_content += """
     </div>
 </body>
 </html>
+            # --- ESCRIBIR EL ARCHIVO FINAL EN EL REPOSITORIO ---
+with open("index.html", "w", encoding="utf-8") as f:
+    f.write(html_content)
+print("¡Fichero index.html unificado y completado con éxito!")
