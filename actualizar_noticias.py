@@ -53,11 +53,10 @@ def leer_emisores_y_productos_robusto(ruta_archivo):
         print(f"Nota: No se pudo procesar estructura extendida del Excel ({e})")
     return mapping
 
-# 1. Cargar configuración desde el Excel
+# Cargar configuración inicial
 mapping_emisores = leer_emisores_y_productos_robusto("Emisores.xlsx")
 
-# 2. DICCIONARIO INTELIGENTE DE RESPALDO Y CORRECCIÓN (Clasificación manual explícita)
-# Si el emisor existe en tu Excel, el script usará estas reglas para forzar su segmentación correcta
+# Base de datos manual de clasificación forzada para asegurar consistencia de instrumentos
 reglas_seguridad = {
     "aceros arequipa": "Renta Variable",
     "alicorp": "Renta Variable",
@@ -70,34 +69,25 @@ reglas_seguridad = {
     "buenaventura": "Renta Variable",
     "intercorp": "Fondos",
     "fibra prime": "Alternativos",
-    "fibra data": "Alternativos",
     "luz del sur": "Renta Fija",
     "enel": "Renta Fija",
     "telefonica": "Renta Fija"
 }
 
-# Aplicar corrección y rellenar vacíos si el extractor nativo falló
 if not mapping_emisores:
-    print("Activando base de datos de emisores por defecto...")
-    # Si el Excel no leyó nada, poblar con emisores clave para que no quede vacío
     mapping_emisores = {
         "Aceros Arequipa": "Renta Variable",
         "Alicorp": "Renta Variable",
         "Volcan": "Renta Variable",
         "Pacífico Seguros": "Renta Fija",
-        "Rímac Seguros": "Renta Fija",
-        "Fibra Prime": "Alternativos"
+        "Rímac Seguros": "Renta Fija"
     }
 else:
-    # Si leyó el Excel pero todo lo mandó a Renta Fija por error de lectura, corregir usando las reglas de seguridad
     for emisor in list(mapping_emisores.keys()):
         nombre_min = emisor.lower()
         for clave, prod_correcto in reglas_seguridad.items():
             if clave in nombre_min:
                 mapping_emisores[emisor] = prod_correcto
-                print(f"⚡ Forzando clasificación correcta: {emisor} -> {prod_correcto}")
-
-print(f"Estructura final corregida: {mapping_emisores}")
 
 orden_productos = ["Renta Fija", "Renta Variable", "Fondos", "Alternativos"]
 datos_centralizados = {prod: {} for prod in orden_productos}
@@ -106,8 +96,11 @@ for emisor, prod in mapping_emisores.items():
     if prod in datos_centralizados:
         datos_centralizados[prod][emisor] = {"hechos": [], "noticias": []}
 
-# 3. Descargar e integrar Hechos Relevantes desde la SMV
-print("Buscando alertas regulatorias en la SMV...")
+# Patrón semántico de alertas de calificación crediticia (Upgrades, Downgrades, Perspectivas)
+patron_riesgo = re.compile(r'(downgrade|upgrade|calificacion|clasificacion|clasificadora|perspectiva|rating|bajada|subida|investment grade|grado de inversion)', re.IGNORECASE)
+
+# Descargar Hechos Relevantes desde la SMV
+print("Buscando alertas de clasificación en la SMV...")
 url_smv = "https://www.smv.gob.pe/Frm_HechosRelevantesRSS?id=0"
 try:
     req_smv = urllib.request.Request(url_smv, headers={'User-Agent': 'Mozilla/5.0'})
@@ -126,19 +119,22 @@ try:
         
         for emisor, prod in mapping_emisores.items():
             if prod in datos_centralizados and (emisor.lower() in texto_analizar or (len(emisor) > 5 and emisor.lower()[:5] in texto_analizar)):
+                es_prioritaria = bool(patron_riesgo.search(texto_analizar))
+                
                 datos_centralizados[prod][emisor]["hechos"].append({
                     "titulo": titulo.replace("Hecho Relevante -", "").strip(),
                     "link": link,
-                    "fecha": fecha[:16]
+                    "fecha": fecha[:16],
+                    "prioritaria": es_prioritaria
                 })
 except Exception as e:
-    print(f"Aviso SMV ignorado por seguridad: {e}")
+    print(f"Aviso SMV: {e}")
 
-# 4. Descargar noticias desde Google News
-print("Buscando novedades en prensa financiera...")
+# Descargar noticias desde Google News
+print("Buscando noticias en Google News...")
 for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
     if prod not in datos_centralizados: continue
-    if idx > 25: continue # Evitar bloqueos de IP por exceso de consultas
+    if idx > 25: continue
     
     query = urllib.parse.quote(f"{emisor} Peru")
     url = f"https://news.google.com/rss/search?q={query}&hl=es-419&gl=PE&ceid=PE:es-419"
@@ -147,25 +143,32 @@ for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
         with urllib.request.urlopen(req, timeout=8) as response:
             xml_data = response.read()
         root = ET.fromstring(xml_data)
-        count = 0
-        for item in root.findall('.//item'):
-            if count >= 2: break
+        
+        for item in root.findall('.//item')[:4]:
             titulo = item.find('title').text
             link = item.find('link').text
             fecha = item.find('pubDate').text
             fuente = item.find('source').text if item.find('source') is not None else "Prensa"
             
+            es_prioritaria = bool(patron_riesgo.search(titulo))
+            
             datos_centralizados[prod][emisor]["noticias"].append({
                 "titulo": titulo,
                 "link": link,
                 "fecha": fecha[:16],
-                "fuente": fuente
+                "fuente": fuente,
+                "prioritaria": es_prioritaria
             })
-            count += 1
     except Exception as e:
         pass
 
-# 5. CONSTRUCCIÓN DE LA WEB DINÁMICA CON FILTRADO ESTRICTO
+# ORDENACIÓN INTERNA POR RELEVANCIA DE CRÉDITO
+for prod in orden_productos:
+    for emisor in datos_centralizados[prod]:
+        datos_centralizados[prod][emisor]["hechos"].sort(key=lambda x: x["prioritaria"], reverse=True)
+        datos_centralizados[prod][emisor]["noticias"].sort(key=lambda x: x["prioritaria"], reverse=True)
+
+# 5. MAQUETADO HTML
 html_content = f"""<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -182,28 +185,26 @@ html_content = f"""<!DOCTYPE html>
                 <h1 class="text-3xl font-extrabold bg-gradient-to-r from-blue-400 via-indigo-400 to-emerald-400 bg-clip-text text-transparent">
                     Monitoreo de Noticias del Portafolio
                 </h1>
-                <p class="text-gray-400 text-sm mt-1">Filtro analítico de mercado en tiempo real</p>
+                <p class="text-gray-400 text-sm mt-1">Filtro de Crédito con prioridad en Calificaciones de Riesgo e Instrumentos</p>
             </div>
-            <div class="bg-gray-900 border border-gray-800 px-4 py-2 rounded-xl text-xs font-mono text-gray-400">
-                Comité de Riesgos Activo
+            <div class="bg-red-950/40 border border-red-500/30 px-4 py-2 rounded-xl text-xs font-mono text-red-400 flex items-center gap-2 animate-pulse">
+                <span class="w-2 h-2 rounded-full bg-red-500"></span> Alertas de Calificación Priorizadas
             </div>
         </header>
 """
 
-# Contador global de emisores mostrados
 total_emisores_visibles = 0
 
 for producto in orden_productos:
     emisores_del_producto = datos_centralizados[producto]
     
-    # CRITERIO DE EXCLUSIÓN: Verificar si al menos un emisor de esta categoría tiene noticias hoy
+    # CRITERIO DE EXCLUSIÓN COMPLETA: Si no hay noticias hoy, no sale la categoría
     contiene_noticias_activas = False
-    for emisor, contenido in emisores_del_producto.items():
+    for emisor, contenido in list(emisores_del_producto.items()):
         if contenido["hechos"] or contenido["noticias"]:
             contiene_noticias_activas = True
             break
             
-    # Si la categoría completa no tiene novedades, NO se dibuja en el tablero
     if not contiene_noticias_activas:
         continue
 
@@ -216,42 +217,48 @@ for producto in orden_productos:
         <section class="mb-12">
             <div class="flex items-center gap-3 mb-6 border-b border-gray-800 pb-2">
                 <h2 class="text-xl font-bold text-white">{producto}</h2>
-                <span class="border text-xs px-2.5 py-0.5 rounded-md font-medium {badge_color}">Instrumentos</span>
+                <span class="border text-xs px-2.5 py-0.5 rounded-md font-medium {badge_color}">Segmento</span>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
     """
 
-    for emisor, contenido in emisores_del_producto.items():
+    for emisor, contenido in list(emisores_del_producto.items()):
         hechos = contenido["hechos"]
         noticias = contenido["noticias"]
         
-        # CONDICIÓN ESTRICTA: Si la empresa no trae información hoy, no se muestra su caja
+        # CONDICIÓN ESTRICTA: Si la empresa no trae información hoy, NO sale en el tablero
         if not hechos and not noticias:
             continue
             
         total_emisores_visibles += 1
 
+        tiene_alerta_critica = any(h["prioritaria"] for h in hechos) or any(n["prioritaria"] for n in noticias)
+        borde_caja = "border-red-500/40 bg-gradient-to-b from-gray-900 to-red-950/10 shadow-red-950/20" if tiene_alerta_critica else "border-gray-800 bg-gray-900 shadow-lg"
+
         html_content += f"""
-                <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 flex flex-col justify-between shadow-lg hover:border-gray-700 transition">
+                <div class="rounded-xl border p-5 flex flex-col justify-between hover:border-gray-700 transition duration-300 {borde_caja}">
                     <div>
-                        <div class="pb-2 mb-3 border-b border-gray-800/60">
+                        <div class="pb-2 mb-3 border-b border-gray-800/60 flex justify-between items-center">
                             <h3 class="text-sm font-bold text-gray-100 tracking-wide uppercase">{html.escape(emisor)}</h3>
+                            { '<span class="bg-red-500/10 text-red-400 border border-red-500/20 text-[9px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider animate-pulse">Rating Alert</span>' if tiene_alerta_critica else '' }
                         </div>
         """
 
         if hechos:
-            html_content += """<div class="mb-3"><h4 class="text-[10px] font-bold text-amber-500 uppercase tracking-wider mb-1">🚨 SMV</h4><div class="space-y-1.5">"""
+            html_content += """<div class="mb-3"><h4 class="text-[10px] font-bold text-amber-500 uppercase tracking-wider mb-1">🚨 SMV / Hechos</h4><div class="space-y-1.5">"""
             for h in hechos:
-                html_content += f"""<div class="bg-amber-500/5 border-l-2 border-amber-500 p-2 rounded-r text-xs">
-                                    <a href="{h['link']}" target="_blank" class="font-medium text-gray-300 hover:text-amber-400 line-clamp-2">{html.escape(h['titulo'])}</a>
+                bg_item = "bg-red-500/10 border-red-500 font-semibold" if h["prioritaria"] else "bg-amber-500/5 border-amber-500"
+                html_content += f"""<div class="border-l-2 p-2 rounded-r text-xs {bg_item}">
+                                    <a href="{h['link']}" target="_blank" class="text-gray-200 hover:text-blue-400 line-clamp-2">{html.escape(h['titulo'])}</a>
                                 </div>"""
             html_content += """</div></div>"""
 
         if noticias:
             html_content += """<div><h4 class="text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-1">📰 Prensa</h4><div class="space-y-1.5">"""
             for n in noticias:
-                html_content += f"""<div class="bg-emerald-500/5 border-l-2 border-emerald-500 p-2 rounded-r text-xs">
-                                    <a href="{n['link']}" target="_blank" class="font-medium text-gray-300 hover:text-emerald-400 line-clamp-2">{html.escape(n['titulo'])}</a>
+                bg_item = "bg-red-500/10 border-red-500 font-semibold" if n["prioritaria"] else "bg-emerald-500/5 border-emerald-500"
+                html_content += f"""<div class="border-l-2 p-2 rounded-r text-xs {bg_item}">
+                                    <a href="{n['link']}" target="_blank" class="text-gray-200 hover:text-blue-400 line-clamp-2">{html.escape(n['titulo'])}</a>
                                 </div>"""
             html_content += """</div></div>"""
 
@@ -259,18 +266,17 @@ for producto in orden_productos:
 
     html_content += """</div></section>"""
 
-# Si absolutamente ningún emisor tiene noticias en todo el portafolio
 if total_emisores_visibles == 0:
     html_content += """
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center max-w-xl mx-auto my-12">
-            <p class="text-amber-400 font-medium text-lg mb-2">☕ Todo en calma en el mercado</p>
-            <p class="text-gray-400 text-sm">No se han registrado hechos de importancia en la SMV ni alertas de prensa para tus emisores en las últimas horas.</p>
+            <p class="text-emerald-400 font-medium text-lg mb-2">☕ Todo bajo control</p>
+            <p class="text-gray-400 text-sm">No se reportan hechos de importancia ni cambios de perspectivas para el portafolio en este ciclo.</p>
         </div>
     """
 
 html_content += """
         <footer class="mt-16 pt-6 border-t border-gray-900 text-center text-xs text-gray-600">
-            Filtro regulatorio segmentado por categorías de inversión.
+            Filtro regulatorio segmentado por categorías de inversión con priorización de riesgo.
         </footer>
     </div>
 </body>
@@ -279,4 +285,4 @@ html_content += """
 
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html_content)
-print("¡Archivo index.html generado con éxito!")
+print("¡Fichero index.html generado con éxito!")
