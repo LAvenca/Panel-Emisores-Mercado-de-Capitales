@@ -36,7 +36,7 @@ def leer_emisores_y_productos_estricto(ruta_archivo):
                                             texto = val
                                     else:
                                         texto = val
-                                    texto = re.sub(r'<[^>]+>', '', texto).strip()
+                                    texto = re.sub(r'<[^>]+>', ' ', texto).strip()
                                     datos_fila.append(texto)
                                 else:
                                     datos_fila.append("")
