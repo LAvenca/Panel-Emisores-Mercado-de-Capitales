@@ -1,6 +1,5 @@
-import urllib.request
+    import urllib.request
 import urllib.parse
-import xml.etree.ElementTree as ET
 import html
 import zipfile
 import re
@@ -115,7 +114,7 @@ nemonicos_contingencia = {
 
 links_globales_procesados = set()
 
-# --- FASE 1: RASTREO EN ENLACES CORE BURSÁTILES (Fuentes de Acceso Abierto) ---
+# --- FASE 1: RASTREO EN ENLACES CORE BURSÁTILES ---
 print("Fase 1: Extrayendo información de portales bursátiles oficiales...")
 PAGINAS_PRIORITARIAS = [
     {"url": "https://www.bvl.com.pe/emisores/noticias-emisores", "fuente": "BVL Oficial"},
@@ -162,7 +161,7 @@ for portal in PAGINAS_PRIORITARIAS:
     except Exception as e:
         print(f"Portal diferido de forma segura: {portal['fuente']}")
 
-# --- FASE 2: RASTREO ROBUSTO EN LA RED COMPLEMENTARIA (Google News + Bloomberg Línea + Moody's Global Alerts) ---
+# --- FASE 2: RASTREO EN LA RED ABIERTA USANDO EXPRESIONES REGULARES (Inmune a fallos de tags XML) ---
 print("Fase 2: Ejecutando consultas cruzadas en la red...")
 for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
     if prod not in datos_centralizados: continue
@@ -185,14 +184,24 @@ for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
     for url in urls_red:
         try:
             req = urllib.request.Request(url, headers=HEADERS_NATIVOS)
-            with urllib.request.urlopen(req, timeout=8) as response:
-                root = ET.fromstring(response.read())
+            with urllib.request.urlopen(req, timeout=10) as response:
+                xml_raw = response.read().decode('utf-8', errors='ignore')
             
-            for item in root.findall('.//item')[:5]:
-                titulo = item.find('title').text if item.find('title') is not None else ""
-                link = item.find('link').text if item.find('link') is not None else ""
-                pub_date = item.find('pubDate').text if item.find('pubDate') is not None else ""
-                fuente = item.find('source').text if item.find('source') is not None else "Prensa"
+            # EXTRACCIÓN LINEAL: Buscamos bloques <item> de forma directa mediante regex, ignorando fallos del árbol XML
+            items_raw = re.findall(r'<item>([\s\S]*?)</item>', xml_raw)
+            
+            for item_content in items_raw[:5]:
+                t_match = re.search(r'<title>([\s\S]*?)</title>', item_content)
+                l_match = re.search(r'<link>([\s\S]*?)</link>', item_content)
+                d_match = re.search(r'<pubDate>([\s\S]*?)</pubDate>', item_content)
+                f_match = re.search(r'<source[^>]*>([\s\S]*?)</source>', item_content)
+                
+                titulo = t_match.group(1).strip() if t_match else ""
+                link = l_match.group(1).strip() if l_match else ""
+                pub_date = d_match.group(1).strip() if d_match else ""
+                fuente = f_match.group(1).strip() if f_match else "Prensa"
+                
+                if not titulo or not link: continue
                 
                 if "bloomberglinea.com" in link:
                     fuente = "Bloomberg Línea"
@@ -328,7 +337,7 @@ html_content += """
     </div>
 </body>
 </html>
-  # --- ESCRIBIR EL ARCHIVO FINAL EN EL REPOSITORIO ---
+# --- ESCRIBIR EL ARCHIVO FINAL EN EL REPOSITORIO ---
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html_content)
-print("¡Fichero index.html unificado y completado con éxito con protección ante bloqueos!")          
+print("¡Fichero index.html unificado y completado con éxito con protección ante bloqueos!")
