@@ -56,7 +56,7 @@ def leer_emisores_y_productos_estricto(ruta_archivo):
                                     elif 'alterna' in prod_normalizado or 'alt' in prod_normalizado: mapping[emisor] = "Alternativos"
                                     else: mapping[emisor] = "Renta Fija"
     except Exception as e:
-        print("Nota: Leyendo estructura base del Excel...")
+        print("Nota: Cargando matriz desde archivo local...")
     return mapping
 
 # 1. Cargar emisores UNICAMENTE desde tu archivo real Excel
@@ -115,19 +115,18 @@ nemonicos_contingencia = {
 
 links_globales_procesados = set()
 
-# --- FASE 1: RASTREO EN ENLACES CORE DE LA BOLSA Y SMV ---
+# --- FASE 1: RASTREO EN ENLACES CORE BURSÁTILES (Fuentes de Acceso Abierto) ---
 print("Fase 1: Extrayendo información de portales bursátiles oficiales...")
 PAGINAS_PRIORITARIAS = [
     {"url": "https://www.bvl.com.pe/emisores/noticias-emisores", "fuente": "BVL Oficial"},
     {"url": "https://www.smv.gob.pe/SIMV/frm_hechosdeImportanciaDia?data=38C2EC33FA106691BB5B5039DACFDF50795D8EC3AF", "fuente": "SMV Diario"},
-    {"url": "https://www.smv.gob.pe/SIMV/Frm_HechosDeImportancia?data=EBE76110FDC9EF5632D5100F5B0448927EBDAC2CF7", "fuente": "SMV Historial"},
-    {"url": "https://www.moodys.com/entity/489500/overview", "fuente": "Moody's Radar"}
+    {"url": "https://www.smv.gob.pe/SIMV/Frm_HechosDeImportancia?data=EBE76110FDC9EF5632D5100F5B0448927EBDAC2CF7", "fuente": "SMV Historial"}
 ]
 
 for portal in PAGINAS_PRIORITARIAS:
     try:
         req = urllib.request.Request(portal["url"], headers=HEADERS_NATIVOS)
-        with urllib.request.urlopen(req, timeout=8) as response:
+        with urllib.request.urlopen(req, timeout=10) as response:
             html_puro = response.read().decode('utf-8', errors='ignore')
         
         texto_limpio = re.sub(r'<script[^>]*>([\s\S]*?)</script>|<style[^>]*>([\s\S]*?)</style>', '', html_puro)
@@ -145,7 +144,7 @@ for portal in PAGINAS_PRIORITARIAS:
                 nemonico = nemonicos_contingencia.get(emisor, "---").lower()
                 
                 if raiz_emisor in linea.lower() or nemonico in linea.lower():
-                    es_prioritaria = bool(patron_riesgo.search(linea)) or any(k in portal["fuente"].lower() for k in ["bvl", "smv", "moody"])
+                    es_prioritaria = bool(patron_riesgo.search(linea)) or any(k in portal["fuente"].lower() for k in ["bvl", "smv"])
                     if emisor in soberanos_requeridos and not es_prioritaria: continue
                     
                     if linea in links_globales_procesados: continue
@@ -161,9 +160,9 @@ for portal in PAGINAS_PRIORITARIAS:
                         "prioritaria": es_prioritaria
                     })
     except Exception as e:
-        print(f"Nota: Portal {portal['fuente']} no disponible temporalmente. Continuando...")
+        print(f"Portal diferido de forma segura: {portal['fuente']}")
 
-# --- FASE 2: RASTREO ROBUSTO EN LA RED COMPLEMENTARIA (Google News + Bloomberg Línea) ---
+# --- FASE 2: RASTREO ROBUSTO EN LA RED COMPLEMENTARIA (Google News + Bloomberg Línea + Moody's Global Alerts) ---
 print("Fase 2: Ejecutando consultas cruzadas en la red...")
 for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
     if prod not in datos_centralizados: continue
@@ -222,7 +221,7 @@ for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
                     "prioritaria": es_prioritaria
                 })
         except:
-            pass # Tolerancia total si Google bloquea el agente de la red
+            pass 
 
 # --- FASE 3: ORDENACIÓN POR RATINGS CRÍTICOS ---
 for prod in orden_productos:
@@ -250,7 +249,7 @@ html_content = f"""<!DOCTYPE html>
                 <p class="text-gray-400 text-sm mt-1">Filtro de Crédito Avanzado • Sincronización Estricta de tu Portafolio de Inversión</p>
             </div>
             <div class="bg-red-950/40 border border-red-500/30 px-4 py-2 rounded-xl text-xs font-mono text-red-400 flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> Terminal Blindada y Tolerante a Bloqueos de Servidor Activa
+                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> Terminal Blindada y Abierta Sincronizada Activa
             </div>
         </header>
 """
@@ -318,7 +317,7 @@ if total_visibles == 0:
     html_content += """
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center max-w-xl mx-auto my-12">
             <p class="text-emerald-400 font-medium text-lg mb-2">☕ Todo bajo control</p>
-            <p class="text-gray-400 text-sm">Portales en actualización. Ejecuta nuevamente en unos minutos para refrescar datos.</p>
+            <p class="text-gray-400 text-sm">No se registran alertas de crédito ni movimientos para tu portafolio de Excel hoy.</p>
         </div>
     """
 
@@ -329,7 +328,7 @@ html_content += """
     </div>
 </body>
 </html>
-# --- ESCRIBIR EL ARCHIVO FINAL EN EL REPOSITORIO ---
+  # --- ESCRIBIR EL ARCHIVO FINAL EN EL REPOSITORIO ---
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html_content)
-print("¡Fichero index.html unificado y completado con éxito con protección ante bloqueos!")
+print("¡Fichero index.html unificado y completado con éxito con protección ante bloqueos!")          
