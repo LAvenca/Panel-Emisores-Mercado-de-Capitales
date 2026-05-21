@@ -1,4 +1,4 @@
- import urllib.request
+import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 import html
@@ -42,21 +42,21 @@ def leer_emisores_y_productos_estricto(ruta_archivo):
                                     datos_fila.append("")
                             
                             if len(datos_fila) >= 2:
-                                emisor = datos_fila[0]
-                                producto = datos_fila[1]
+                                emisor = str(datos_fila[0]).strip()
+                                producto = str(datos_fila[1]).strip()
                                 
-                                if emisor.lower() in ['emisores', 'emisor', 'nombre', 'empresa', 'razon social', 'company', '']:
+                                # Ignorar filas vacías o encabezados del Excel
+                                if not emisor or emisor.lower() in ['emisores', 'emisor', 'nombre', 'empresa', 'razon social', 'company']:
                                     continue
                                     
-                                if emisor:
-                                    prod_normalizado = str(producto).strip().lower()
-                                    if 'fija' in prod_normalizado: mapping[emisor] = "Renta Fija"
-                                    elif 'variable' in prod_normalizado or 'accion' in prod_normalizado: mapping[emisor] = "Renta Variable"
-                                    elif 'fondo' in prod_normalizado: mapping[emisor] = "Fondos"
-                                    elif 'alterna' in prod_normalizado or 'alt' in prod_normalizado: mapping[emisor] = "Alternativos"
-                                    else: mapping[emisor] = "Renta Fija"
+                                prod_normalizado = producto.lower()
+                                if 'fija' in prod_normalizado: mapping[emisor] = "Renta Fija"
+                                elif 'variable' in prod_normalizado or 'accion' in prod_normalizado: mapping[emisor] = "Renta Variable"
+                                elif 'fondo' in prod_normalizado: mapping[emisor] = "Fondos"
+                                elif 'alterna' in prod_normalizado or 'alt' in prod_normalizado: mapping[emisor] = "Alternativos"
+                                else: mapping[emisor] = "Renta Fija"
     except Exception as e:
-        print("Nota: Procesando archivo base corporativo...")
+        print("Nota: Procesando archivo base de datos...")
     return mapping
 
 # 1. Cargar emisores UNICAMENTE desde tu archivo real Excel
@@ -70,7 +70,7 @@ for pais, segmento in soberanos_requeridos.items():
     if pais not in mapping_emisores and (pais.lower() != "mexico" or "México" not in mapping_emisores):
         mapping_emisores[pais] = segmento
 
-# Clasificación forzada de seguridad para consistencia de familias de activos
+# Clasificación forzada de seguridad (Aplica solo si el emisor existe en tu Excel real o es país)
 reglas_seguridad = {
     "aceros arequipa": "Renta Variable", "alicorp": "Renta Variable", "volcan": "Renta Variable",
     "inretail": "Renta Variable", "credicorp": "Renta Variable", "bcp": "Renta Variable",
@@ -137,6 +137,7 @@ for portal in PAGINAS_PRIORITARIAS:
             if patron_fechas_viejas.search(linea) or patron_basura.search(linea): continue
             
             for emisor, prod in mapping_emisores.items():
+                if not emisor: continue
                 raiz_emisor = emisor.split()[0].replace(",", "").replace(".", "").strip().lower()
                 if len(raiz_emisor) <= 3 and len(emisor.split()) > 1:
                     raiz_emisor = emisor.split()[1].replace(",", "").replace(".", "").strip().lower()
@@ -162,10 +163,10 @@ for portal in PAGINAS_PRIORITARIAS:
     except Exception as e:
         print(f"Portal diferido de forma segura: {portal['fuente']}")
 
-# --- FASE 2: RASTREO COMPLEMENTARIO EN LA RED (Inmune a fallos de tags XML) ---
+# --- FASE 2: RASTREO COMPLEMENTARIO EN LA RED (Google News + Bloomberg Línea) ---
 print("Fase 2: Ejecutando consultas cruzadas en la red...")
 for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
-    if prod not in datos_centralizados: continue
+    if not emisor or prod not in datos_centralizados: continue
     
     is_soberano = emisor in soberanos_requeridos
     emisor_encoded = urllib.parse.quote(emisor)
@@ -340,4 +341,4 @@ html_content += """
 # --- ESCRIBIR EL ARCHIVO FINAL EN EL REPOSITORIO ---
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html_content)
-print("¡Fichero index.html unificado y completado con éxito!")
+print("¡Fichero index.html unificado y completado con éxito con protección ante bloqueos!")
