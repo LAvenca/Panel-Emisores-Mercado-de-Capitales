@@ -40,42 +40,45 @@ def leer_emisores_y_productos_robusto(ruta_archivo):
                         if len(datos_fila) >= 2:
                             emisor = datos_fila[0]
                             producto = datos_fila[1]
-                            if idx == 0 and emisor.lower() in ['emisores', 'emisor', 'nombre', 'empresa']:
+                            
+                            # FILTRO FLEXIBLE DE ENCABEZADOS: Ignora la fila si son títulos de columna
+                            if emisor.lower() in ['emisores', 'emisor', 'nombre', 'empresa', 'razon social', 'company', '']:
                                 continue
+                                
                             if emisor and producto:
                                 prod_normalizado = producto.strip().lower()
                                 if 'fija' in prod_normalizado: mapping[emisor] = "Renta Fija"
                                 elif 'variable' in prod_normalizado or 'accion' in prod_normalizado: mapping[emisor] = "Renta Variable"
                                 elif 'fondo' in prod_normalizado: mapping[emisor] = "Fondos"
                                 elif 'alterna' in prod_normalizado or 'alt' in prod_normalizado: mapping[emisor] = "Alternativos"
+                                else: mapping[emisor] = "Renta Fija" # Por defecto si la celda está vacía
     except Exception as e:
-        print("Cargando lista base de emisores...")
+        print(f"Nota: No se pudo procesar el Excel, usando base de datos nativa ({e})")
     return mapping
 
-# Cargar emisores del portafolio
+# Cargar emisores desde tu archivo Excel
 mapping_emisores = leer_emisores_y_productos_robusto("Emisores.xlsx")
 
-# Clasificación forzada de seguridad para consistencia en el tablero
+# Inyección obligatoria de Emisores Soberanos para el Comité de Riesgos
+soberanos_requeridos = {
+    "Peru": "Renta Fija", "Mexico": "Renta Fija", "Chile": "Renta Fija", "Colombia": "Renta Fija", "USA": "Renta Fija"
+}
+for pais, segmento in soberanos_requeridos.items():
+    if pais not in mapping_emisores and (pais.lower() != "mexico" or "México" not in mapping_emisores):
+        mapping_emisores[pais] = segmento
+
+# Clasificación forzada de seguridad para consistencia institucional
 reglas_seguridad = {
     "aceros arequipa": "Renta Variable", "alicorp": "Renta Variable", "volcan": "Renta Variable",
     "inretail": "Renta Variable", "credicorp": "Renta Variable", "bcp": "Renta Variable",
-    "ferreycorp": "Renta Variable", "minsur": "Renta Variable", "buenaventura": "Renta Variable",
-    "intercorp": "Fondos", "fibra prime": "Alternativos", "luz del sur": "Renta Fija",
-    "enel": "Renta Fija", "telefonica": "Renta Fija", "cerro verde": "Renta Variable",
-    "banco gnb": "Renta Fija", "caja arequipa": "Renta Fija", "fossal": "Renta Variable"
+    "cerro verde": "Renta Variable", "banco gnb": "Renta Fija", "peru": "Renta Fija",
+    "mexico": "Renta Fija", "chile": "Renta Fija", "colombia": "Renta Fija", "usa": "Renta Fija"
 }
-
-if not mapping_emisores:
-    mapping_emisores = {
-        "Aceros Arequipa": "Renta Variable", "Alicorp": "Renta Variable", "Volcan": "Renta Variable",
-        "Cerro Verde": "Renta Variable", "Banco GNB": "Renta Fija", "Caja Arequipa": "Renta Fija"
-    }
-else:
-    for emisor in list(mapping_emisores.keys()):
-        nombre_min = emisor.lower()
-        for clave, prod_correcto in reglas_seguridad.items():
-            if clave in nombre_min:
-                mapping_emisores[emisor] = prod_correcto
+for emisor in list(mapping_emisores.keys()):
+    nombre_min = emisor.lower()
+    for clave, prod_correcto in reglas_seguridad.items():
+        if clave in nombre_min:
+            mapping_emisores[emisor] = prod_correcto
 
 orden_productos = ["Renta Fija", "Renta Variable", "Fondos", "Alternativos"]
 datos_centralizados = {prod: {} for prod in orden_productos}
@@ -83,102 +86,126 @@ for emisor, prod in mapping_emisores.items():
     if prod in datos_centralizados:
         datos_centralizados[prod][emisor] = {"noticias": []}
 
-# Cabeceras completas de simulación de navegador humano
+# Cabeceras de simulación de navegador humano
 HEADERS_NATIVOS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-    'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8'
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
 }
 
-# Diccionario semántico de alertas crediticias y estructurales
+# Diccionario semántico de alertas de calificación, perspectivas y hechos de importancia
 patrones_criticos = [
     r'downgrade', r'upgrade', r'moody', r'fitch', r's&p', r'calificaci', r'clasificaci',
-    r'perspectiva', r'rating', r'riesgo', r'sindicado', r'aumento de capital', r'hecho de importancia'
+    r'perspectiva', r'rating', r'outlook', r'riesgo', r'sindicado', r'aumento de capital', 
+    r'hecho de importancia', r'deuda', r'bonos', r'soberano', r'investment grade', r'grado de inversion'
 ]
 patron_riesgo = re.compile('|'.join(patrones_criticos), re.IGNORECASE)
 
-# FUENTES PRIORITARIAS (Tus links obligatorios)
-PAGINAS_PRIORITARIAS = [
-    {"url": "https://www.bvl.com.pe/emisores/noticias-emisores", "fuente": "BVL Oficial"},
-    {"url": "https://www.smv.gob.pe/SIMV/frm_hechosdeImportanciaDia?data=38C2EC33FA106691BB5B5039DACFDF50795D8EC3AF", "fuente": "SMV Diario"},
-    {"url": "https://www.smv.gob.pe/SIMV/Frm_HechosDeImportancia?data=EBE76110FDC9EF5632D5100F5B0448927EBDAC2CF7", "fuente": "SMV Historial"},
-    {"url": "https://www.moodys.com/entity/489500/overview", "fuente": "Moody's Radar"},
-    {"url": "https://www.bloomberglinea.com/tags/las-noticias-del-dia/", "fuente": "Bloomberg Línea"}
+# Filtros anti-farándula y fechas antiguas
+patron_basura = re.compile(r'television|televisión|conductor|primiciasya|casella|espectaculo|futbol|fútbol|partido|farandula', re.IGNORECASE)
+patron_fechas_viejas = re.compile(r'\b(2020|2021|2022)\b')
+
+# 1. CANALES XML/RSS (BVL, SMV y el Feed Oficial en Tiempo Real de Bloomberg Línea)
+FEEDS_MONITOREO = [
+    {"url": "https://www.bvl.com.pe/emisores/noticias-emisores", "fuente": "BVL Oficial", "tipo": "html"},
+    {"url": "https://www.smv.gob.pe/SIMV/frm_hechosdeImportanciaDia?data=38C2EC33FA106691BB5B5039DACFDF50795D8EC3AF", "fuente": "SMV Diario", "tipo": "html"},
+    {"url": "https://www.smv.gob.pe/SIMV/Frm_HechosDeImportancia?data=EBE76110FDC9EF5632D5100F5B0448927EBDAC2CF7", "fuente": "SMV Historial", "tipo": "html"},
+    {"url": "https://www.bloomberglinea.com/index.xml", "fuente": "Bloomberg Línea", "tipo": "rss"}, # CONECTOR RSS DIRECTO
+    {"url": "https://www.moodys.com/entity/489500/overview", "fuente": "Moody's Radar", "tipo": "html"}
 ]
 
 links_globales_procesados = set()
 
-# --- FASE 1: ESCANEO EN FUENTES PRIORITARIAS CON AISLAMIENTO DE ERRORES ---
-print("Fase 1: Extrayendo información directa de fuentes prioritarias...")
-for portal in PAGINAS_PRIORITARIAS:
+print("Procesando canales primarios de información de mercado...")
+for portal in FEEDS_MONITOREO:
     try:
         req = urllib.request.Request(portal["url"], headers=HEADERS_NATIVOS)
-        with urllib.request.urlopen(req, timeout=10) as response:
-            html_puro = response.read().decode('utf-8', errors='ignore')
-        
-        texto_limpio = re.sub(r'<script[^>]*>([\s\S]*?)</script>|<style[^>]*>([\s\S]*?)</style>', '', html_puro)
-        lineas = [re.sub(r'<[^>]+>', ' ', l).strip() for l in texto_limpio.split('\n') if l.strip()]
-        
-        for linea in lineas:
-            if len(linea) < 15 or len(linea) > 230: continue
+        with urllib.request.urlopen(req, timeout=12) as response:
+            raw_data = response.read()
             
-            for emisor, prod in mapping_emisores.items():
-                if emisor.lower() in linea.lower() or (len(emisor) > 5 and emisor.lower()[:5] in linea.lower()):
-                    es_prioritaria = bool(patron_riesgo.search(linea)) or "moody" in portal["fuente"].lower()
-                    
-                    if linea in links_globales_procesados: continue
-                    links_globales_procesados.add(linea)
-                    
-                    datos_centralizados[prod][emisor]["noticias"].append({
-                        "titulo": linea,
-                        "link": portal["url"],
-                        "fuente": portal["fuente"],
-                        "prioritaria": es_prioritaria
-                    })
-    except Exception as e:
-        print(f"Portal diferido {portal['fuente']}")
+        if portal["tipo"] == "rss":
+            # Procesar el Feed limpio de Bloomberg Línea
+            root = ET.fromstring(raw_data)
+            for item in root.findall('.//item'):
+                titulo = item.find('title').text if item.find('title') is not None else ""
+                link = item.find('link').text if item.find('link') is not None else portal["url"]
+                
+                if patron_fechas_viejas.search(titulo) or patron_basura.search(titulo): continue
+                
+                for emisor, prod in mapping_emisores.items():
+                    if emisor.lower() in titulo.lower():
+                        es_prioritaria = bool(patron_riesgo.search(titulo))
+                        if emisor in soberanos_requeridos and not es_prioritaria: continue
+                        
+                        if link in links_globales_procesados: continue
+                        links_globales_procesados.add(link)
+                        
+                        datos_centralizados[prod][emisor]["noticias"].append({
+                            "titulo": titulo, "link": link, "fuente": portal["fuente"], "prioritaria": es_prioritaria
+                        })
+        else:
+            # Procesar portales HTML estándar
+            html_puro = raw_data.decode('utf-8', errors='ignore')
+            texto_limpio = re.sub(r'<script[^>]*>([\s\S]*?)</script>|<style[^>]*>([\s\S]*?)</style>', '', html_puro)
+            lineas = [re.sub(r'<[^>]+>', ' ', l).strip() for l in texto_limpio.split('\n') if l.strip()]
+            
+            for linea in lineas:
+                if len(linea) < 12 or len(linea) > 240: continue
+                if patron_fechas_viejas.search(linea) or patron_basura.search(linea): continue
+                
+                for emisor, prod in mapping_emisores.items():
+                    if emisor.lower() in linea.lower():
+                        es_prioritaria = bool(patron_riesgo.search(linea)) or "moody" in portal["fuente"].lower()
+                        if emisor in soberanos_requeridos and not es_prioritaria: continue
+                        
+                        if linea in links_globales_procesados: continue
+                        links_globales_procesados.add(linea)
+                        
+                        datos_centralizados[prod][emisor]["noticias"].append({
+                            "titulo": linea, "link": portal["url"], "fuente": portal["fuente"], "prioritaria": es_prioritaria
+                        })
+    except:
+        pass
 
-# --- FASE 2: RASTREO COMPLEMENTARIO EN LA RED (Google News Perú + México + USA Global) ---
-print("Fase 2: Ejecutando rastreo complementario en la red global...")
+# --- FASE 2: RASTREO COMPLEMENTARIO EN LA RED (Google News Global Ventana de 6 meses) ---
+print("Fase 2: Ejecutando consultas en la red global...")
 for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
     if prod not in datos_centralizados: continue
     
-    limite_prensa = 2 if len(datos_centralizados[prod][emisor]["noticias"]) > 0 else 4
-    
+    is_soberano = emisor in soberanos_requeridos
     emisor_encoded = urllib.parse.quote(emisor)
+    ventana_tiempo = "tbs=qdr:m6" if (is_soberano or emisor.lower() in ["cerro verde", "alicorp"]) else "tbs=qdr:m"
+    
+    if is_soberano:
+        query = f'("{emisor}"%20OR%20"Republica%20de%20{emisor}")%20(Moody%27s%20OR%20Fitch%20OR%20Downgrade%20OR%20Outlook%20OR%20Perspectiva)'
+    else:
+        query = f'{emisor_encoded}%20(Moody%27s%20OR%20Downgrade%20OR%20Rating%20OR%20Sindicado)'
+
     urls_red = [
-        f"https://news.google.com/rss/search?q={emisor_encoded}%20Peru&hl=es-419&gl=PE&ceid=PE:es-419",
-        f"https://news.google.com/rss/search?q={emisor_encoded}%20Mexico&hl=es-419&gl=MX&ceid=MX:es-419",
-        f"https://news.google.com/rss/search?q={emisor_encoded}%20(Moody%27s%20OR%20Downgrade%20OR%20Rating)&hl=es-419&gl=US&ceid=US:es-419"
+        f"https://news.google.com/rss/search?q={query}&hl=es-419&gl=PE&ceid=PE:es-419&{ventana_tiempo}",
+        f"https://news.google.com/rss/search?q={query}&hl=es-419&gl=US&ceid=US:es-419&{ventana_tiempo}"
     ]
     
     for url in urls_red:
         try:
             req = urllib.request.Request(url, headers=HEADERS_NATIVOS)
             with urllib.request.urlopen(req, timeout=8) as response:
-                xml_data = response.read()
-            root = ET.fromstring(xml_data)
+                root = ET.fromstring(response.read())
             
-            count = 0
-            for item in root.findall('.//item'):
-                if count >= limite_prensa: break
+            for item in root.findall('.//item')[:5]:
                 titulo = item.find('title').text
                 link = item.find('link').text
-                fuente = item.find('source').text if item.find('source') is not None else "Red Internacional"
+                fuente = item.find('source').text if item.find('source') is not None else "Finanzas Regionales"
+                
+                if patron_fechas_viejas.search(titulo) or patron_basura.search(titulo): continue
+                if is_soberano and not any(x in titulo.lower() for x in [emisor.lower(), 'perspectiva', 'rating', 'downgrade', 'outlook']): continue
                 
                 if link in links_globales_procesados or titulo in links_globales_procesados: continue
                 links_globales_procesados.add(link)
                 links_globales_procesados.add(titulo)
                 
-                es_prioritaria = bool(patron_riesgo.search(titulo))
-                
                 datos_centralizados[prod][emisor]["noticias"].append({
-                    "titulo": titulo,
-                    "link": link,
-                    "fuente": fuente,
-                    "prioritaria": es_prioritaria
+                    "titulo": titulo, "link": link, "fuente": fuente, "prioritaria": True
                 })
-                count += 1
         except:
             pass
 
@@ -205,10 +232,10 @@ html_content = f"""<!DOCTYPE html>
                 <h1 class="text-3xl font-extrabold bg-gradient-to-r from-blue-400 via-indigo-400 to-emerald-400 bg-clip-text text-transparent">
                     Monitoreo de Noticias del Portafolio
                 </h1>
-                <p class="text-gray-400 text-sm mt-1">Filtro de Crédito Avanzado • Fuentes Clave e Inteligencia Global Activos</p>
+                <p class="text-gray-400 text-sm mt-1">Filtro de Crédito Avanzado • Sincronización Flexible de Excel y Bloomberg RSS</p>
             </div>
             <div class="bg-red-950/40 border border-red-500/30 px-4 py-2 rounded-xl text-xs font-mono text-red-400 flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> Sistema de Monitoreo Continuo Tolerante a Fallos
+                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> Indexación de Excel y Canales Bloomberg Línea Conectados
             </div>
         </header>
 """
@@ -238,14 +265,20 @@ for producto in orden_productos:
         if not noticias: continue
         total_visibles += 1
         
+        es_pais = emisor in soberanos_requeridos
+        bg_card_base = "from-gray-900 to-blue-950/10 border-blue-500/30" if es_pais else "from-gray-900 to-gray-900/40 border-gray-800"
+        
         tiene_alerta = any(n["prioritaria"] for n in noticias)
-        borde_caja = "border-red-500/50 bg-gradient-to-b from-gray-900 to-red-950/20 shadow-red-950/30 shadow-lg" if tiene_alerta else "border-gray-800 bg-gray-900 shadow-lg"
+        borde_caja = f"border-red-500/50 bg-gradient-to-b from-gray-900 to-red-950/20 shadow-red-950/30 shadow-lg" if tiene_alerta else f"border-gray-800 bg-gradient-to-b {bg_card_base} shadow-lg"
 
         html_content += f"""
                 <div class="rounded-xl border p-5 flex flex-col justify-between hover:border-gray-700 transition duration-300 {borde_caja}">
                     <div>
                         <div class="pb-2 mb-3 border-b border-gray-800/60 flex justify-between items-center">
-                            <h3 class="text-sm font-bold text-gray-100 tracking-wide uppercase">{html.escape(emisor)}</h3>
+                            <div class="flex items-center gap-2">
+                                <h3 class="text-sm font-bold text-gray-100 tracking-wide uppercase">{html.escape(emisor)}</h3>
+                                { '<span class="text-[9px] px-1.5 py-0.2 bg-blue-500/10 text-blue-400 rounded-md border border-blue-500/20 font-mono">Soberano</span>' if es_pais else '' }
+                            </div>
                             { '<span class="bg-red-500/20 text-red-400 border border-red-500/30 text-[9px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider animate-pulse">Rating Alert</span>' if tiene_alerta else '' }
                         </div>
                         <div class="space-y-2">
@@ -267,19 +300,17 @@ if total_visibles == 0:
     html_content += """
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center max-w-xl mx-auto my-12">
             <p class="text-emerald-400 font-medium text-lg mb-2">☕ Todo bajo control</p>
-            <p class="text-gray-400 text-sm">No se reportaron alertas ni movimientos de prensa en los canales monitoreados en las últimas horas.</p>
+            <p class="text-gray-400 text-sm">No se registran alertas de crédito ni movimientos en el portafolio en este instante.</p>
         </div>
     """
 
 html_content += """
         <footer class="mt-16 pt-6 border-t border-gray-900 text-center text-xs text-gray-600">
-            Filtro de Crédito Customizado Multiregional • BVL, SMV, Moody's, Bloomberg Línea y Google Global.
+            Filtro de Crédito Customizado Multiregional Soberano e Institucional.
         </footer>
     </div>
 </body>
-</html>
-"""
-
+</html> 
 # --- ESCRIBIR EL ARCHIVO FINAL EN EL REPOSITORIO ---
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html_content)
