@@ -4,8 +4,8 @@ import html
 import zipfile
 import re
 
-def leer_emisores_excel_robusto(ruta_archivo):
-    emisores = []
+def leer_emisores_y_productos_excel(ruta_archivo):
+    mapping = {}
     try:
         with zipfile.ZipFile(ruta_archivo, 'r') as z:
             shared_strings = []
@@ -17,40 +17,65 @@ def leer_emisores_excel_robusto(ruta_archivo):
             with z.open('xl/worksheets/sheet1.xml') as sheet:
                 content = sheet.read().decode('utf-8')
                 filas = re.findall(r'<row[^>]*>(.*?)</row>', content)
-                for fila in filas:
+                
+                for index, fila in enumerate(filas):
                     celdas = re.findall(r'<c[^>]*>(.*?)</c>', fila)
-                    if celdas:
-                        primera_celda = celdas[0]
-                        es_shared = 't="s"' in fila or 't="s"' in re.search(r'<c[^>]*>', fila).group(0) if re.search(r'<c[^>]*>', fila) else False
-                        v_match = re.search(r'<v>(.*?)</v>', primera_celda)
-                        if v_match:
-                            valor = v_match.group(1)
-                            if es_shared and shared_strings:
-                                try: texto = shared_strings[int(valor)]
-                                except: texto = valor
-                            else: texto = valor
-                            texto_limpio = re.sub(r'<[^>]+>', '', texto).strip()
-                            if texto_limpio:
-                                emisores.append(texto_limpio)
+                    if len(celdas) >= 2:
+                        # Extraer Texto de Columna A (Emisor)
+                        c1 = celdas[0]
+                        v1_match = re.search(r'<v>(.*?)</v>', c1)
+                        emisor = ""
+                        if v1_match:
+                            val1 = v1_match.group(1)
+                            emisor = shared_strings[int(val1)] if 't="s"' in c1 and shared_strings else val1
+                            emisor = re.sub(r'<[^>]+>', '', emisor).strip()
+
+                        # Extraer Texto de Columna B (Producto)
+                        c2 = celdas[1]
+                        v2_match = re.search(r'<v>(.*?)</v>', c2)
+                        producto = ""
+                        if v2_match:
+                            val2 = v2_match.group(1)
+                            producto = shared_strings[int(val2)] if 't="s"' in c2 and shared_strings else val2
+                            producto = re.sub(r'<[^>]+>', '', producto).strip()
+
+                        # Omitir cabecera
+                        if index == 0 and emisor.lower() in ['emisores', 'emisor', 'nombre']:
+                            continue
+
+                        if emisor and producto:
+                            mapping[emisor] = producto
     except Exception as e:
         print(f"Error al leer Excel: {e}")
-    if emisores and emisores[0].lower() in ['emisores', 'emisor', 'nombre', 'empresa', 'empresas', 'columna1']:
-        emisores.pop(0)
-    return list(set([e for e in emisores if len(e) > 1]))
+    return mapping
 
-# 1. Cargar tus emisores desde el Excel
-emisores = leer_emisores_excel_robusto("Emisores.xlsx")
-if not emisores:
-    emisores = ["Pacífico Seguros", "Interseguro", "Rímac Seguros", "Credicorp", "Intercorp"]
+# 1. Cargar mapeo del Excel
+mapping_emisores = leer_emisores_y_productos_excel("Emisores.xlsx")
 
-print(f"Emisores a monitorear: {emisores}")
+# Lista de respaldo si el Excel está vacío
+if not mapping_emisores:
+    mapping_emisores = {
+        "Pacífico Seguros": "Renta Fija",
+        "Rímac Seguros": "Renta Fija",
+        "Interseguro": "Renta Variable",
+        "Credicorp": "Renta Variable",
+        "Fibra Prime": "Alternativos"
+    }
 
-noticias_totales = []
-hechos_relevantes = []
+print(f"Mapeo cargado: {mapping_emisores}")
 
-# 2. SECCIÓN SMV: Descargar Hechos Relevantes del mercado peruano
+# Orden estricto solicitado
+orden_productos = ["Renta Fija", "Renta Variable", "Fondos", "Alternativos"]
+
+# Inicializar estructura centralizada organizada por Producto -> Emisor
+datos_centralizados = {prod: {} for prod in orden_productos}
+for emisor, prod in mapping_emisores.items():
+    if prod in datos_centralizados:
+        datos_centralizados[prod][emisor] = {"hechos": [], "noticias": []}
+
+# 2. SECCIÓN SMV: Descargar e integrar Hechos Relevantes
 print("Consultando Hechos Relevantes en la SMV...")
-url_smv = "https://www.smv.gob.pe/Frm_HechosRelevantesRSS?id=0" # RSS oficial de la SMV
+url_smv = "https://www.smv.gob.pe/Frm_HechosRelevantesRSS?id=0"
 try:
     req_smv = urllib.request.Request(url_smv, headers={'User-Agent': 'Mozilla/5.0'})
     with urllib.request.urlopen(req_smv, timeout=15) as response:
@@ -62,27 +87,23 @@ try:
         link = item.find('link').text if item.find('link') is not None else ""
         fecha = item.find('pubDate').text if item.find('pubDate') is not None else ""
         descripcion = item.find('description').text if item.find('description') is not None else ""
-        
-        # Combinamos título y descripción para buscar si pertenece a tus emisores
         texto_analizar = (titulo + " " + descripcion).lower()
         
-        for emisor in emisores:
-            # Si el nombre del emisor (o palabras clave) está en el hecho relevante, lo guardamos
-            if emisor.lower() in texto_analizar or (len(emisor) > 5 and emisor.lower()[:5] in texto_analizar):
-                hechos_relevantes.append({
-                    "emisor": emisor,
+        for emisor, prod in mapping_emisores.items():
+            if prod in datos_centralizados and (emisor.lower() in texto_analizar or (len(emisor) > 5 and emisor.lower()[:5] in texto_analizar)):
+                datos_centralizados[prod][emisor]["hechos"].append({
                     "titulo": titulo.replace("Hecho Relevante -", "").strip(),
                     "link": link,
-                    "fecha": fecha,
-                    "fuente": "SMV / BVL"
+                    "fecha": fecha[:16]
                 })
-                break # Evita duplicar si hace match con más de una regla
+                break
 except Exception as e:
-    print(f"Nota: No se pudo conectar a la SMV en este momento (Razón: {e}).")
+    print(f"Nota: No se pudo conectar a la SMV ({e}).")
 
-# 3. SECCIÓN GOOGLE NEWS: Buscar noticias generales de cada emisor
+# 3. SECCIÓN GOOGLE NEWS: Descargar noticias de prensa
 print("Consultando Google News...")
-for emisor in emisores:
+for emisor, prod in mapping_emisores.items():
+    if prod not in datos_centralizados: continue
     query = urllib.parse.quote(f"{emisor} Peru")
     url = f"https://news.google.com/rss/search?q={query}&hl=es-419&gl=PE&ceid=PE:es-419"
     try:
@@ -96,121 +117,125 @@ for emisor in emisores:
             titulo = item.find('title').text
             link = item.find('link').text
             fecha = item.find('pubDate').text
-            fuente = item.find('source').text if item.find('source') is not None else "Gestión / El Comercio"
+            fuente = item.find('source').text if item.find('source') is not None else "Prensa"
             
-            noticias_totales.append({
-                "emisor": emisor,
+            datos_centralizados[prod][emisor]["noticias"].append({
                 "titulo": titulo,
                 "link": link,
-                "fecha": fecha,
+                "fecha": fecha[:16],
                 "fuente": fuente
             })
             count += 1
     except Exception as e:
         print(f"Error en noticias para {emisor}: {e}")
 
-# 4. MAQUETADO DE LA WEB (Diseño con pestaña de Hechos Relevantes)
+# 4. MAQUETADO DE LA WEB SEGMENTADO POR TIPO DE PRODUCTO
 html_content = f"""<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Emisores - Mercado de Capitales</title>
+    <title>Panel de Emisores por Tipo de Producto</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen font-sans">
     <div class="max-w-7xl mx-auto px-4 py-8">
         
-        <header class="border-b border-gray-800 pb-6 mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <header class="border-b border-gray-800 pb-6 mb-12 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-                <h1 class="text-3xl font-extrabold bg-gradient-to-r from-blue-400 via-indigo-400 to-green-400 bg-clip-text text-transparent">
-                    Panel de Emisores corporativos
+                <h1 class="text-3xl font-extrabold bg-gradient-to-r from-blue-400 via-indigo-400 to-emerald-400 bg-clip-text text-transparent">
+                    Monitoreo de Emisores Segmentado
                 </h1>
-                <p class="text-gray-400 text-sm mt-1">Monitoreo de Riesgo de Crédito • Actualizado automáticamente</p>
+                <p class="text-gray-400 text-sm mt-1">Clasificación por Renta Fija, Variable, Fondos y Alternativos</p>
             </div>
-            <div class="bg-gray-900 border border-gray-800 px-4 py-2 rounded-xl text-xs text-gray-400">
-                Origen de datos: <span class="text-indigo-400 font-semibold">SMV, BVL y Prensa Financiera</span>
+            <div class="bg-gray-900 border border-gray-800 px-4 py-2 rounded-xl text-xs font-mono text-gray-400">
+                Estrategia de Portafolio Activa
             </div>
         </header>
+"""
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+# Generar bloques horizontales respetando el orden estricto
+for producto in orden_productos:
+    emisores_del_producto = datos_centralizados[producto]
+    
+    # Solo pintamos la sección de producto si contiene emisores activos con alertas/noticias
+    hay_info = any(em["hechos"] or em["noticias"] for em in emisores_del_producto.values())
+    if not hay_info:
+        continue
+
+    # Color diferenciador para cada tipo de activo
+    badge_color = "text-blue-400 border-blue-500/30 bg-blue-500/5"
+    if producto == "Renta Variable": badge_color = "text-purple-400 border-purple-500/30 bg-purple-500/5"
+    elif producto == "Fondos": badge_color = "text-emerald-400 border-emerald-500/30 bg-emerald-500/5"
+    elif producto == "Alternativos": badge_color = "text-amber-400 border-amber-500/30 bg-amber-500/5"
+
+    html_content += f"""
+        <section class="mb-12">
+            <div class="flex items-center gap-3 mb-6 border-b border-gray-800 pb-2">
+                <h2 class="text-xl font-bold tracking-tight text-white">{producto}</h2>
+                <span class="border text-xs px-2.5 py-0.5 rounded-md font-medium {badge_color}">Clasificación Activa</span>
+            </div>
             
-            <div class="lg:col-span-1">
-                <div class="bg-slate-900/50 p-4 rounded-2xl border border-indigo-500/20 mb-4 flex items-center justify-between">
-                    <h2 class="text-lg font-bold text-indigo-400 flex items-center gap-2">
-                        🚨 Hechos Relevantes SMV
-                    </h2>
-                    <span class="bg-indigo-500/10 text-indigo-400 text-xs font-mono px-2 py-0.5 rounded-full">{len(hechos_relevantes)} hoy</span>
-                </div>
-                
-                <div class="space-y-4 max-h-[750px] overflow-y-auto pr-2">
-"""
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    """
 
-if not hechos_relevantes:
-    html_content += """
-                    <div class="text-center py-8 text-gray-600 border border-dashed border-gray-800 rounded-xl bg-gray-900/20 text-sm">
-                        Sin alertas ni hechos relevantes reportados hoy para tus emisores.
-                    </div>"""
-else:
-    for h in hechos_relevantes:
-        html_content += f"""
-                    <div class="bg-gray-900 p-4 rounded-xl border-l-4 border-amber-500 border-y border-r border-gray-800 hover:border-gray-700 transition">
-                        <div class="flex justify-between items-center mb-1">
-                            <span class="text-xs font-bold text-amber-400 uppercase tracking-wider">{html.escape(h['emisor'])}</span>
-                            <span class="text-[10px] text-gray-500">{html.escape(h['fuente'])}</span>
-                        </div>
-                        <h3 class="text-sm font-semibold text-gray-200 hover:text-blue-400 mb-2">
-                            <a href="{h['link']}" target="_blank" rel="noopener noreferrer">{html.escape(h['titulo'])}</a>
-                        </h3>
-                        <p class="text-[11px] text-gray-500 font-mono">{h['fecha'][:16]}</p>
-                    </div>"""
-
-html_content += """
-                </div>
-            </div>
-
-            <div class="lg:col-span-2">
-                <div class="bg-slate-900/50 p-4 rounded-2xl border border-emerald-500/20 mb-4">
-                    <h2 class="text-lg font-bold text-emerald-400">📰 Prensa & Noticias del Mercado</h2>
-                </div>
-                
-                <div class="grid gap-4 md:grid-cols-2">
-"""
-
-if not noticias_totales:
-    html_content += """
-                    <div class="col-span-full text-center py-12 text-gray-600">
-                        No se encontraron noticias adicionales en la prensa local.
-                    </div>"""
-else:
-    for n in noticias_totales:
-        html_content += f"""
-                    <div class="bg-gray-900 p-5 rounded-xl border border-gray-800 hover:border-emerald-500/50 transition duration-300 flex flex-col justify-between">
-                        <div>
-                            <div class="flex justify-between items-center mb-2">
-                                <span class="bg-emerald-500/10 text-emerald-400 text-xs font-medium px-2 py-0.5 rounded">
-                                    {html.escape(n['emisor'])}
-                                </span>
-                                <span class="text-gray-500 text-xs">{html.escape(n['fuente'])}</span>
-                            </div>
-                            <h3 class="text-sm font-medium text-white line-clamp-3 hover:text-emerald-400">
-                                <a href="{n['link']}" target="_blank" rel="noopener noreferrer">{html.escape(n['titulo'])}</a>
-                            </h3>
-                        </div>
-                        <div class="pt-3 mt-4 border-t border-gray-800/60 flex justify-between items-center text-[11px] text-gray-500">
-                            <span>{n['fecha'][:16]}</span>
-                            <a href="{n['link']}" target="_blank" class="text-blue-400 hover:underline font-medium">Ver nota →</a>
-                        </div>
-                    </div>"""
-
-html_content += """
-                </div>
-            </div>
-
-        </div>
+    for emisor, contenido in emisores_del_producto.items():
+        hechos = contenido["hechos"]
+        noticias = contenido["noticias"]
         
+        if not hechos and not noticias: continue
+
+        html_content += f"""
+                <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 flex flex-col justify-between shadow-lg">
+                    <div>
+                        <div class="pb-2 mb-3 border-b border-gray-800/60 flex justify-between items-center">
+                            <h3 class="text-md font-bold text-gray-100 tracking-wide uppercase">{html.escape(emisor)}</h3>
+                        </div>
+        """
+
+        if hechos:
+            html_content += """
+                        <div class="mb-4">
+                            <h4 class="text-[11px] font-bold text-amber-500 uppercase tracking-wider mb-2">🚨 Hechos SMV</h4>
+                            <div class="space-y-2">"""
+            for h in hechos:
+                html_content += f"""
+                                <div class="bg-amber-500/5 border-l-2 border-amber-500 p-2 rounded-r-md text-xs">
+                                    <a href="{h['link']}" target="_blank" rel="noopener noreferrer" class="font-medium text-gray-300 hover:text-amber-400 line-clamp-2">{html.escape(h['titulo'])}</a>
+                                    <span class="text-[10px] text-gray-500 block mt-0.5 font-mono">{h['fecha']}</span>
+                                </div>"""
+            html_content += """</div></div>"""
+
+        if noticias:
+            html_content += """
+                        <div>
+                            <h4 class="text-[11px] font-bold text-emerald-400 uppercase tracking-wider mb-2">📰 Prensa</h4>
+                            <div class="space-y-2">"""
+            for n in noticias:
+                html_content += f"""
+                                <div class="bg-emerald-500/5 border-l-2 border-emerald-500 p-2 rounded-r-md text-xs">
+                                    <a href="{n['link']}" target="_blank" rel="noopener noreferrer" class="font-medium text-gray-300 hover:text-emerald-400 line-clamp-2">{html.escape(n['titulo'])}</a>
+                                    <div class="flex justify-between text-[10px] text-gray-500 mt-0.5 font-mono">
+                                        <span>{html.escape(n['fuente'])}</span>
+                                        <span>{n['fecha']}</span>
+                                    </div>
+                                </div>"""
+            html_content += """</div></div>"""
+
+        html_content += """
+                    </div>
+                    <div class="text-[10px] text-gray-600 text-right mt-4 font-mono">Consolidado</div>
+                </div>
+        """
+
+    html_content += """
+            </div>
+        </section>
+    """
+
+html_content += """
         <footer class="mt-16 pt-6 border-t border-gray-900 text-center text-xs text-gray-600">
-            Filtro regulatorio automatizado para Mercado de Valores Peruano.
+            Filtro regulatorio segmentado por categorías de inversión.
         </footer>
     </div>
 </body>
@@ -220,4 +245,4 @@ html_content += """
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html_content)
 
-print("¡index.html generado exitosamente con Hechos Relevantes!")
+print("¡index.html estructurado por categorías con éxito!")
