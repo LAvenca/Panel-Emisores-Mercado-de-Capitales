@@ -4,77 +4,92 @@ import html
 import zipfile
 import re
 
-def leer_emisores_y_productos_excel(ruta_archivo):
+def leer_emisores_y_productos_robusto(ruta_archivo):
     mapping = {}
     try:
         with zipfile.ZipFile(ruta_archivo, 'r') as z:
+            # 1. Extraer todos los textos indexados del Excel
             shared_strings = []
             if 'xl/sharedStrings.xml' in z.namelist():
                 with z.open('xl/sharedStrings.xml') as strings_file:
                     content = strings_file.read().decode('utf-8')
                     shared_strings = re.findall(r'<t[^>]*>(.*?)</t>', content)
 
+            # 2. Leer la estructura de las celdas por fila
             with z.open('xl/worksheets/sheet1.xml') as sheet:
                 content = sheet.read().decode('utf-8')
+                
+                # Expresión regular para capturar cada fila completa
                 filas = re.findall(r'<row[^>]*>(.*?)</row>', content)
                 
-                for index, fila in enumerate(filas):
-                    celdas = re.findall(r'<c[^>]*>(.*?)</c>', fila)
+                for idx, fila in enumerate(filas):
+                    # Capturar el contenido de cada celda individualmente dentro de la fila
+                    celdas = re.findall(r'<c[^>]*>(.*?)</c>|<c[^>]*/>', fila)
+                    
+                    # Necesitamos al menos dos celdas con datos en la fila
                     if len(celdas) >= 2:
-                        # Extraer Texto de Columna A (Emisor)
-                        c1 = celdas[0]
-                        v1_match = re.search(r'<v>(.*?)</v>', c1)
-                        emisor = ""
-                        if v1_match:
-                            val1 = v1_match.group(1)
-                            emisor = shared_strings[int(val1)] if 't="s"' in c1 and shared_strings else val1
-                            emisor = re.sub(r'<[^>]+>', '', emisor).strip()
-
-                        # Extraer Texto de Columna B (Producto)
-                        c2 = celdas[1]
-                        v2_match = re.search(r'<v>(.*?)</v>', c2)
-                        producto = ""
-                        if v2_match:
-                            val2 = v2_match.group(1)
-                            producto = shared_strings[int(val2)] if 't="s"' in c2 and shared_strings else val2
-                            producto = re.sub(r'<[^>]+>', '', producto).strip()
-
-                        # Omitir cabecera
-                        if index == 0 and emisor.lower() in ['emisores', 'emisor', 'nombre']:
-                            continue
-
-                        if emisor and producto:
-                            mapping[emisor] = producto
+                        datos_fila = []
+                        for celda in celdas[:2]:
+                            v_match = re.search(r'<v>(.*?)</v>', celda)
+                            if v_match:
+                                val = v_match.group(1)
+                                # Si la celda indica que es tipo 's' (shared string)
+                                if 't="s"' in celda or (celda == celdas[0] and 't="s"' in filas[idx]):
+                                    try: texto = shared_strings[int(val)]
+                                    except: texto = val
+                                else:
+                                    texto = val
+                                texto = re.sub(r'<[^>]+>', '', texto).strip()
+                                datos_fila.append(texto)
+                            else:
+                                datos_fila.append("")
+                        
+                        if len(datos_fila) >= 2:
+                            emisor = datos_fila[0]
+                            producto = datos_fila[1]
+                            
+                            # Omitir la primera fila si es el encabezado de las columnas
+                            if idx == 0 and emisor.lower() in ['emisores', 'emisor', 'nombre', 'empresa']:
+                                continue
+                                
+                            if emisor and producto:
+                                # Normalizar el nombre del producto para evitar errores de escritura en el Excel
+                                prod_normalizado = producto.strip().lower()
+                                if 'fija' in prod_normalizado: mapping[emisor] = "Renta Fija"
+                                elif 'variable' in prod_normalizado: mapping[emisor] = "Renta Variable"
+                                elif 'fondo' in prod_normalizado: mapping[emisor] = "Fondos"
+                                elif 'alterna' in prod_normalizado or 'alt' in prod_normalizado: mapping[emisor] = "Alternativos"
+                                else: mapping[emisor] = "Renta Fija" # Categoría por defecto
     except Exception as e:
-        print(f"Error al leer Excel: {e}")
+        print(f"Error procesando el Excel: {e}")
     return mapping
 
-# 1. Cargar mapeo del Excel
-mapping_emisores = leer_emisores_y_productos_excel("Emisores.xlsx")
+# Cargar la configuración desde el archivo Excel subido
+mapping_emisores = leer_emisores_y_productos_robusto("Emisores.xlsx")
 
-# Lista de respaldo si el Excel está vacío
+# Plan de respaldo si la estructura del archivo sigue resistiéndose a la lectura nativa
 if not mapping_emisores:
+    print("Aviso: No se pudo mapear el Excel. Activando lista de emisores de respaldo...")
     mapping_emisores = {
         "Pacífico Seguros": "Renta Fija",
         "Rímac Seguros": "Renta Fija",
         "Interseguro": "Renta Variable",
         "Credicorp": "Renta Variable",
+        "Intercorp": "Fondos",
         "Fibra Prime": "Alternativos"
     }
 
-print(f"Mapeo cargado: {mapping_emisores}")
+print(f"Estructura final de emisores cargada: {mapping_emisores}")
 
-# Orden estricto solicitado
 orden_productos = ["Renta Fija", "Renta Variable", "Fondos", "Alternativos"]
-
-# Inicializar estructura centralizada organizada por Producto -> Emisor
 datos_centralizados = {prod: {} for prod in orden_productos}
+
 for emisor, prod in mapping_emisores.items():
     if prod in datos_centralizados:
         datos_centralizados[prod][emisor] = {"hechos": [], "noticias": []}
 
-# 2. SECCIÓN SMV: Descargar e integrar Hechos Relevantes
-print("Consultando Hechos Relevantes en la SMV...")
+# 3. Descargar Hechos Relevantes desde la SMV
+print("Buscando información regulatoria en la SMV...")
 url_smv = "https://www.smv.gob.pe/Frm_HechosRelevantesRSS?id=0"
 try:
     req_smv = urllib.request.Request(url_smv, headers={'User-Agent': 'Mozilla/5.0'})
@@ -98,10 +113,10 @@ try:
                 })
                 break
 except Exception as e:
-    print(f"Nota: No se pudo conectar a la SMV ({e}).")
+    print(f"Error SMV: {e}")
 
-# 3. SECCIÓN GOOGLE NEWS: Descargar noticias de prensa
-print("Consultando Google News...")
+# 4. Descargar noticias desde Google News de manera global
+print("Buscando información en prensa financiera...")
 for emisor, prod in mapping_emisores.items():
     if prod not in datos_centralizados: continue
     query = urllib.parse.quote(f"{emisor} Peru")
@@ -127,15 +142,15 @@ for emisor, prod in mapping_emisores.items():
             })
             count += 1
     except Exception as e:
-        print(f"Error en noticias para {emisor}: {e}")
+        print(f"Error noticias: {e}")
 
-# 4. MAQUETADO DE LA WEB SEGMENTADO POR TIPO DE PRODUCTO
+# 5. CONSTRUCCIÓN DE LA WEB DINÁMICA
 html_content = f"""<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Emisores por Tipo de Producto</title>
+    <title>Monitoreo de Emisores Segmentado</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen font-sans">
@@ -154,16 +169,13 @@ html_content = f"""<!DOCTYPE html>
         </header>
 """
 
-# Generar bloques horizontales respetando el orden estricto
 for producto in orden_productos:
     emisores_del_producto = datos_centralizados[producto]
     
-    # Solo pintamos la sección de producto si contiene emisores activos con alertas/noticias
-    hay_info = any(em["hechos"] or em["noticias"] for em in emisores_del_producto.values())
-    if not hay_info:
+    # Mostrar la sección si tiene emisores configurados para que la grilla nunca se quede vacía
+    if not emisores_del_producto:
         continue
 
-    # Color diferenciador para cada tipo de activo
     badge_color = "text-blue-400 border-blue-500/30 bg-blue-500/5"
     if producto == "Renta Variable": badge_color = "text-purple-400 border-purple-500/30 bg-purple-500/5"
     elif producto == "Fondos": badge_color = "text-emerald-400 border-emerald-500/30 bg-emerald-500/5"
@@ -172,26 +184,30 @@ for producto in orden_productos:
     html_content += f"""
         <section class="mb-12">
             <div class="flex items-center gap-3 mb-6 border-b border-gray-800 pb-2">
-                <h2 class="text-xl font-bold tracking-tight text-white">{producto}</h2>
+                <h2 class="text-xl font-bold text-white">{producto}</h2>
                 <span class="border text-xs px-2.5 py-0.5 rounded-md font-medium {badge_color}">Clasificación Activa</span>
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
     """
 
-    for emisor, contenido in emisores_del_producto.items():
+    for emisor, contenido in list(emisores_del_producto.items()):
         hechos = contenido["hechos"]
         noticias = contenido["noticias"]
         
-        if not hechos and not noticias: continue
-
+        # Si un emisor no tiene novedades hoy, le ponemos un aviso sutil dentro de su caja para mantener la grilla estructurada
         html_content += f"""
-                <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 flex flex-col justify-between shadow-lg">
+                <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 flex flex-col justify-between shadow-lg hover:border-gray-700 transition">
                     <div>
-                        <div class="pb-2 mb-3 border-b border-gray-800/60 flex justify-between items-center">
+                        <div class="pb-2 mb-3 border-b border-gray-800/60">
                             <h3 class="text-md font-bold text-gray-100 tracking-wide uppercase">{html.escape(emisor)}</h3>
                         </div>
         """
+
+        if not hechos and not noticias:
+            html_content += """
+                        <p class="text-xs text-gray-600 italic py-4">Sin alertas de prensa ni hechos relevantes reportados en las últimas horas.</p>
+            """
 
         if hechos:
             html_content += """
