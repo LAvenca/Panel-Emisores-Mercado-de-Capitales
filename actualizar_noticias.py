@@ -108,12 +108,12 @@ PAGINAS_PRIORITARIAS = [
 
 links_globales_procesados = set()
 
-# --- FASE 1: ESCANEO DIRECTO EN TUS FUENTES PRIORITARIAS ---
+# --- FASE 1: ESCANEO EN FUENTES PRIORITARIAS CON AISLAMIENTO DE ERRORES ---
 print("Fase 1: Extrayendo información directa de fuentes prioritarias...")
 for portal in PAGINAS_PRIORITARIAS:
     try:
         req = urllib.request.Request(portal["url"], headers=HEADERS_NATIVOS)
-        with urllib.request.urlopen(req, timeout=12) as response:
+        with urllib.request.urlopen(req, timeout=10) as response:
             html_puro = response.read().decode('utf-8', errors='ignore')
         
         texto_limpio = re.sub(r'<script[^>]*>([\s\S]*?)</script>|<style[^>]*>([\s\S]*?)</style>', '', html_puro)
@@ -127,7 +127,7 @@ for portal in PAGINAS_PRIORITARIAS:
                     es_prioritaria = bool(patron_riesgo.search(linea)) or "moody" in portal["fuente"].lower()
                     
                     if linea in links_globales_procesados: continue
-                    links_globales_processed.add(linea)
+                    links_globales_procesados.add(linea)
                     
                     datos_centralizados[prod][emisor]["noticias"].append({
                         "titulo": linea,
@@ -136,13 +136,15 @@ for portal in PAGINAS_PRIORITARIAS:
                         "prioritaria": es_prioritaria
                     })
     except Exception as e:
-        print(f"Portal diferido {portal['fuente']}")
+        # Tolerancia activa: si falla un link, lo reporta en consola y salta al siguiente de forma limpia
+        print(f"Aviso: Portal {portal['fuente']} no disponible temporalmente. Saltando de forma segura...")
 
-# --- FASE 2: RASTREO ABIERTO EN LA RED (Google News Perú + México + USA Global) ---
+# --- FASE 2: RASTREO COMPLEMENTARIO EN LA RED (Google News Perú + México + USA Global) ---
 print("Fase 2: Ejecutando rastreo complementario en la red global...")
 for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
     if prod not in datos_centralizados: continue
     
+    # Si las fuentes prioritarias no encontraron nada, abrimos la cobertura a 4 noticias de la red
     limite_prensa = 2 if len(datos_centralizados[prod][emisor]["noticias"]) > 0 else 4
     
     emisor_encoded = urllib.parse.quote(emisor)
@@ -208,7 +210,7 @@ html_content = f"""<!DOCTYPE html>
                 <p class="text-gray-400 text-sm mt-1">Filtro de Crédito Avanzado • Fuentes Clave e Inteligencia Global Activos</p>
             </div>
             <div class="bg-red-950/40 border border-red-500/30 px-4 py-2 rounded-xl text-xs font-mono text-red-400 flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> Escaneo Híbrido: Links Core + Red USA/Global
+                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> Sistema de Monitoreo Continuo Tolerante a Fallos
             </div>
         </header>
 """
@@ -216,8 +218,7 @@ html_content = f"""<!DOCTYPE html>
 total_visibles = 0
 for producto in orden_productos:
     emisores_del_producto = datos_centralizados[producto]
-    # CORREGIDO AQUÍ: Variable alineada con el flujo lógico
-    contiene_noticias_activas = any(contenido["noticias"] for emisor, contenido in emisores_del_producto.items())
+    contiene_noticias_activas = any(contenido["noticias"] for emisor, contenido in Comic_del_producto := emisores_del_producto.items())
     if not contiene_noticias_activas: continue
 
     badge_color = "text-blue-400 border-blue-500/30 bg-blue-500/5"
@@ -267,8 +268,8 @@ for producto in orden_productos:
 if total_visibles == 0:
     html_content += """
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center max-w-xl mx-auto my-12">
-            <p class="text-emerald-400 font-medium text-lg mb-2">☕ Mercado bajo monitoreo</p>
-            <p class="text-gray-400 text-sm">No se reportan eventos para los emisores activos del portafolio en este instante.</p>
+            <p class="text-emerald-400 font-medium text-lg mb-2">☕ Todo bajo control</p>
+            <p class="text-gray-400 text-sm">No se reportaron alertas ni movimientos de prensa en los canales monitoreados en las últimas horas.</p>
         </div>
     """
 
