@@ -56,13 +56,13 @@ def leer_emisores_y_productos_estricto(ruta_archivo):
                                     elif 'alterna' in prod_normalizado or 'alt' in prod_normalizado: mapping[emisor] = "Alternativos"
                                     else: mapping[emisor] = "Renta Fija"
     except Exception as e:
-        print(f"Nota: Extrayendo matriz base corporativa...")
+        print(f"Nota: Leyendo estructura del archivo Excel...")
     return mapping
 
-# 1. Cargar emisores desde tu archivo real Excel
+# 1. Cargar emisores UNICAMENTE desde tu archivo real Excel
 mapping_emisores = leer_emisores_y_productos_estricto("Emisores.xlsx")
 
-# Inyección obligatoria de Emisores Soberanos
+# 2. Inyección obligatoria exclusiva de Emisores Soberanos requeridos por el Comité
 soberanos_requeridos = {
     "Peru": "Renta Fija", "Mexico": "Renta Fija", "Chile": "Renta Fija", "Colombia": "Renta Fija", "USA": "Renta Fija"
 }
@@ -70,7 +70,7 @@ for pais, segmento in soberanos_requeridos.items():
     if pais not in mapping_emisores and (pais.lower() != "mexico" or "México" not in mapping_emisores):
         mapping_emisores[pais] = segmento
 
-# Matriz de consistencia institucional
+# Clasificación forzada de seguridad (Solo aplica si el emisor existe en tu Excel real)
 reglas_seguridad = {
     "aceros arequipa": "Renta Variable", "alicorp": "Renta Variable", "volcan": "Renta Variable",
     "inretail": "Renta Variable", "credicorp": "Renta Variable", "bcp": "Renta Variable",
@@ -94,18 +94,27 @@ HEADERS_NATIVOS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 }
 
-# Diccionario semántico de alertas de crédito y riesgo bursátil
+# Diccionario semántico de alertas de crédito, perspectivas y riesgo bursátil
 patrones_criticos = [
     r'downgrade', r'upgrade', r'moody', r'fitch', r's&p', r'calificaci', r'clasificaci',
     r'perspectiva', r'rating', r'outlook', r'riesgo', r'sindicado', r'aumento de capital', 
-    r'hecho de importancia', r'deuda', r'bonos', r'soberano', r'investment grade', r'grado de inversion'
+    r'hecho de importancia', r'deuda', r'bonos', r'soberano', r'investment grade', r'grado de inversion', r'suscripci'
 ]
 patron_riesgo = re.compile('|'.join(patrones_criticos), re.IGNORECASE)
 
 patron_basura = re.compile(r'television|televisión|conductor|primiciasya|casella|espectaculo|futbol|fútbol|partido|farandula', re.IGNORECASE)
 patron_fechas_viejas = re.compile(r'\b(2020|2021|2022)\b')
 
-# PORTALES OFICIALES DE RASTREO DIRECTO (HTML SCRAPING)
+# Diccionario de Nemónicos clave (BVL) para soporte de búsqueda cruzada de tus corporativos principales
+nemonicos_contingencia = {
+    "Cerro Verde": "CVERDEC1", "Banco GNB": "GNBC1", "Fossal": "FOSSALC1",
+    "Fibra Prime": "FIBPRIME", "Aceros Arequipa": "ACEROCI1", "Alicorp": "ALIACCI1", "Volcan": "VOLCABC1"
+}
+
+links_globales_procesados = set()
+
+# --- FASE 1: RASTREO EN ENLACES CORE DE LA BOLSA Y SMV ---
+print("Fase 1: Extrayendo información de portales bursátiles oficiales...")
 PAGINAS_PRIORITARIAS = [
     {"url": "https://www.bvl.com.pe/emisores/noticias-emisores", "fuente": "BVL Oficial"},
     {"url": "https://www.smv.gob.pe/SIMV/frm_hechosdeImportanciaDia?data=38C2EC33FA106691BB5B5039DACFDF50795D8EC3AF", "fuente": "SMV Diario"},
@@ -113,10 +122,6 @@ PAGINAS_PRIORITARIAS = [
     {"url": "https://www.moodys.com/entity/489500/overview", "fuente": "Moody's Radar"}
 ]
 
-links_globales_procesados = set()
-
-# --- FASE 1: RASTREO CORE EN ENLACES DE LA BOLSA Y SMV ---
-print("Fase 1: Extrayendo información de portales bursátiles oficiales...")
 for portal in PAGINAS_PRIORITARIAS:
     try:
         req = urllib.request.Request(portal["url"], headers=HEADERS_NATIVOS)
@@ -131,21 +136,23 @@ for portal in PAGINAS_PRIORITARIAS:
             if patron_fechas_viejas.search(linea) or patron_basura.search(linea): continue
             
             for emisor, prod in mapping_emisores.items():
-                # LIMPIEZA DE RAÍZ LÉXICA: Extrae el núcleo del nombre corporativo omitiendo colas como "S.A.A."
                 raiz_emisor = emisor.split()[0].replace(",", "").replace(".", "").strip().lower()
                 if len(raiz_emisor) <= 3 and len(emisor.split()) > 1:
                     raiz_emisor = emisor.split()[1].replace(",", "").replace(".", "").strip().lower()
                 
-                # Match flexible por raíz léxica para absorber razones sociales complejas de la BVL/SMV
-                if raiz_emisor in linea.lower():
+                nemonico = nemonicos_contingencia.get(emisor, "---").lower()
+                
+                if raiz_emisor in linea.lower() or nemonico in linea.lower():
                     es_prioritaria = bool(patron_riesgo.search(linea)) or any(k in portal["fuente"].lower() for k in ["bvl", "smv", "moody"])
                     if emisor in soberanos_requeridos and not es_prioritaria: continue
                     
                     if linea in links_globales_procesados: continue
                     links_globales_procesados.add(linea)
                     
+                    titulo_limpio = linea.split(" - ")[0].strip()
+                    
                     datos_centralizados[prod][emisor]["noticias"].append({
-                        "titulo": linea,
+                        "titulo": titulo_limpio,
                         "link": portal["url"],
                         "fuente": portal["fuente"],
                         "fecha": "Hoy",
@@ -154,22 +161,20 @@ for portal in PAGINAS_PRIORITARIAS:
     except:
         pass
 
-# --- FASE 2: RASTREO ROBUSTO EN LA RED GLOBAL (Google News + Bloomberg Línea Sincronizado) ---
-print("Fase 2: Ejecutando consultas cruzadas en la red regional...")
+# --- FASE 2: RASTREO ROBUSTO EN LA RED COMPLEMENTARIA (Google News + Bloomberg Línea) ---
+print("Fase 2: Ejecutando consultas cruzadas en la red...")
 for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
     if prod not in datos_centralizados: continue
-    if idx > 45: continue
     
     is_soberano = emisor in soberanos_requeridos
     emisor_encoded = urllib.parse.quote(emisor)
-    ventana_tiempo = "tbs=qdr:m6" if (is_soberano or emisor.lower() in ["cerro verde", "alicorp"]) else "tbs=qdr:m"
+    ventana_tiempo = "tbs=qdr:m6" if (is_soberano or emisor.lower() in ["cerro verde", "alicorp", "mexico"]) else "tbs=qdr:m"
     
-    # Consultas optimizadas con operadores de bolsa
     if is_soberano:
         query_bvl = f'("{emisor}"%20OR%20"Republica%20de%20{emisor}")%20(Moody%27s%20OR%20Fitch%20OR%20Downgrade%20OR%20Outlook%20OR%20Perspectiva)'
     else:
-        # Busca el nombre común o variantes con BVL y Hechos de Importancia
-        query_bvl = f'{emisor_encoded}%20(Moody%27s%20OR%20Downgrade%20OR%20Sindicado%20OR%20SMV%20OR%20BVL%20OR%20"Hecho%20de%20Importancia")'
+        cod_bvl = nemonicos_contingencia.get(emisor, emisor)
+        query_bvl = f'("{emisor}"%20OR%20"{cod_bvl}")%20(Moody%27s%20OR%20Downgrade%20OR%20Sindicado%20OR%20SMV%20OR%20BVL%20OR%20Outlook%20OR%20Suscripcion%20OR%20"Aumento%20de%20Capital")'
 
     urls_red = [
         f"https://news.google.com/rss/search?q={query_bvl}&hl=es-419&gl=PE&ceid=PE:es-419&{ventana_tiempo}",
@@ -186,7 +191,7 @@ for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
                 titulo = item.find('title').text if item.find('title') is not None else ""
                 link = item.find('link').text if item.find('link') is not None else ""
                 pub_date = item.find('pubDate').text if item.find('pubDate') is not None else ""
-                fuente = item.find('source').text if item.find('source') is not None else "Bolsa/Prensa"
+                fuente = item.find('source').text if item.find('source') is not None else "Prensa"
                 
                 if "bloomberglinea.com" in link:
                     fuente = "Bloomberg Línea"
@@ -194,9 +199,10 @@ for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
                 if patron_fechas_viejas.search(titulo) or patron_basura.search(titulo): continue
                 if is_soberano and not any(x in titulo.lower() for x in [emisor.lower(), 'perspectiva', 'rating', 'downgrade', 'outlook']): continue
                 
-                # Match flexible de doble vía por raíz léxica en la red
                 raiz_emisor = emisor.split()[0].replace(",", "").replace(".", "").strip().lower()
-                if not is_soberano and raiz_emisor not in titulo.lower():
+                cod_bvl_lower = nemonicos_contingencia.get(emisor, "---").lower()
+                
+                if not is_soberano and (raiz_emisor not in titulo.lower() and cod_bvl_lower not in titulo.lower()):
                     continue
                 
                 if link in links_globales_procesados or titulo in links_globales_procesados: continue
@@ -216,7 +222,7 @@ for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
         except:
             pass
 
-# --- FASE 3: ORDENACIÓN POR RATING ALERT ---
+# --- FASE 3: ORDENACIÓN POR RATINGS CRÍTICOS ---
 for prod in orden_productos:
     for emisor in datos_centralizados[prod]:
         datos_centralizados[prod][emisor]["noticias"].sort(key=lambda x: x["prioritaria"], reverse=True)
@@ -239,10 +245,10 @@ html_content = f"""<!DOCTYPE html>
                 <h1 class="text-3xl font-extrabold bg-gradient-to-r from-blue-400 via-indigo-400 to-emerald-400 bg-clip-text text-transparent">
                     Monitoreo de Noticias del Portafolio
                 </h1>
-                <p class="text-gray-400 text-sm mt-1">Filtro de Crédito Avanzado • Sincronización Flexible de Excel, BVL y SMV</p>
+                <p class="text-gray-400 text-sm mt-1">Filtro de Crédito Avanzado • Sincronización Estricta de tu Portafolio de Inversión</p>
             </div>
             <div class="bg-red-950/40 border border-red-500/30 px-4 py-2 rounded-xl text-xs font-mono text-red-400 flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> Indexación de Textos Legales Bursátiles Activa
+                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> Lectura Exclusiva de Emisores de Excel y Soberanos Activa
             </div>
         </header>
 """
@@ -310,17 +316,17 @@ if total_visibles == 0:
     html_content += """
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center max-w-xl mx-auto my-12">
             <p class="text-emerald-400 font-medium text-lg mb-2">☕ Todo bajo control</p>
-            <p class="text-gray-400 text-sm">No se registran alertas de crédito ni movimientos en los portales bursátiles hoy.</p>
+            <p class="text-gray-400 text-sm">No se registran alertas de crédito ni movimientos para tu portafolio de Excel hoy.</p>
         </div>
     """
 
 html_content += """
         <footer class="mt-16 pt-6 border-t border-gray-900 text-center text-xs text-gray-600">
-            Filtro de Crédito Customizado Multiregional Soberano e Institucional Sincronizado.
+            Filtro de Crédito Customizado Multiregional Soberano e Institucional Seleccionado.
         </footer>
     </div>
 </body>
-</html> 
+</html>
             # --- ESCRIBIR EL ARCHIVO FINAL EN EL REPOSITORIO ---
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html_content)
