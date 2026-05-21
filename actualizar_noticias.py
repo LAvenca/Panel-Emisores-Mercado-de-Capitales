@@ -70,7 +70,7 @@ for pais, segmento in soberanos_requeridos.items():
     if pais not in mapping_emisores and (pais.lower() != "mexico" or "México" not in mapping_emisores):
         mapping_emisores[pais] = segmento
 
-# Clasificación forzada de seguridad (Solo aplica si el emisor existe en tu Excel real)
+# Clasificación forzada de seguridad (Solo aplica si el emisor existe en tu Excel real o es país)
 reglas_seguridad = {
     "aceros arequipa": "Renta Variable", "alicorp": "Renta Variable", "volcan": "Renta Variable",
     "inretail": "Renta Variable", "credicorp": "Renta Variable", "bcp": "Renta Variable",
@@ -176,6 +176,7 @@ for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
         cod_bvl = nemonicos_contingencia.get(emisor, emisor)
         query_bvl = f'("{emisor}"%20OR%20"{cod_bvl}")%20(Moody%27s%20OR%20Downgrade%20OR%20Sindicado%20OR%20SMV%20OR%20BVL%20OR%20Outlook%20OR%20Suscripcion%20OR%20"Aumento%20de%20Capital")'
 
+    # CORREGIDA: Sintaxis limpia de parámetros de Google News
     urls_red = [
         f"https://news.google.com/rss/search?q={query_bvl}&hl=es-419&gl=PE&ceid=PE:es-419&{ventana_tiempo}",
         f"https://news.google.com/rss/search?q={emisor_encoded}%20site:bloomberglinea.com&hl=es-419&gl=PE&ceid=PE:es-419&{ventana_tiempo}"
@@ -327,7 +328,3 @@ html_content += """
     </div>
 </body>
 </html>
-            # --- ESCRIBIR EL ARCHIVO FINAL EN EL REPOSITORIO ---
-with open("index.html", "w", encoding="utf-8") as f:
-    f.write(html_content)
-print("¡Fichero index.html unificado y completado con éxito!")
