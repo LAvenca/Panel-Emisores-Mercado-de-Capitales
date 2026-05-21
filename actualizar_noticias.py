@@ -1,5 +1,6 @@
-    import urllib.request
+ import urllib.request
 import urllib.parse
+import xml.etree.ElementTree as ET
 import html
 import zipfile
 import re
@@ -55,7 +56,7 @@ def leer_emisores_y_productos_estricto(ruta_archivo):
                                     elif 'alterna' in prod_normalizado or 'alt' in prod_normalizado: mapping[emisor] = "Alternativos"
                                     else: mapping[emisor] = "Renta Fija"
     except Exception as e:
-        print("Nota: Cargando matriz desde archivo local...")
+        print("Nota: Procesando archivo base corporativo...")
     return mapping
 
 # 1. Cargar emisores UNICAMENTE desde tu archivo real Excel
@@ -161,7 +162,7 @@ for portal in PAGINAS_PRIORITARIAS:
     except Exception as e:
         print(f"Portal diferido de forma segura: {portal['fuente']}")
 
-# --- FASE 2: RASTREO EN LA RED ABIERTA USANDO EXPRESIONES REGULARES (Inmune a fallos de tags XML) ---
+# --- FASE 2: RASTREO COMPLEMENTARIO EN LA RED (Inmune a fallos de tags XML) ---
 print("Fase 2: Ejecutando consultas cruzadas en la red...")
 for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
     if prod not in datos_centralizados: continue
@@ -187,7 +188,6 @@ for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
             with urllib.request.urlopen(req, timeout=10) as response:
                 xml_raw = response.read().decode('utf-8', errors='ignore')
             
-            # EXTRACCIÓN LINEAL: Buscamos bloques <item> de forma directa mediante regex, ignorando fallos del árbol XML
             items_raw = re.findall(r'<item>([\s\S]*?)</item>', xml_raw)
             
             for item_content in items_raw[:5]:
@@ -340,4 +340,4 @@ html_content += """
 # --- ESCRIBIR EL ARCHIVO FINAL EN EL REPOSITORIO ---
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html_content)
-print("¡Fichero index.html unificado y completado con éxito con protección ante bloqueos!")
+print("¡Fichero index.html unificado y completado con éxito!")
