@@ -1,9 +1,11 @@
 import urllib.request
 import urllib.parse
+import xml.etree.ElementTree as ET
+import html
 import zipfile
 import re
 import ssl
-import html
+
 def leer_emisores_y_productos_estricto(ruta_archivo):
     mapping = {}
     try:
@@ -154,7 +156,6 @@ for portal in PAGINAS_PRIORITARIAS:
                     if linea in links_globales_procesados: continue
                     links_globales_procesados.add(linea)
                     
-                    # BLINDADO CONTRA CORTES: Extracción segura de títulos sin romper por guiones
                     titulo_limpio = linea
                     if " - " in linea:
                         partes = linea.split(" - ")
@@ -169,82 +170,84 @@ for portal in PAGINAS_PRIORITARIAS:
                         "prioritaria": es_prioritaria
                     })
     except Exception as e:
-        print(f"Canal core diferido de forma segura")
+        print("Canal core diferido de forma segura")
 
 # --- FASE 2: RASTREO MULTI-REGIONAL SEGURO (Google News + Bloomberg Línea) ---
 print("Fase 2: Ejecutando consultas cruzadas en la red global...")
 for idx, (emisor, prod) in enumerate(mapping_emisores.items()):
-    if not emisor or prod not in datos_centralizados: continue
-    
-    is_soberano = emisor in soberanos_requeridos
-    emisor_encoded = urllib.parse.quote(emisor)
-    ventana_tiempo = "tbs=qdr:m6" if (is_soberano or emisor.lower() in ["cerro verde", "alicorp", "mexico"]) else "tbs=qdr:m"
-    
-    if is_soberano:
-        query_bvl = f'("{emisor}"%20OR%20"Republica%20de%20{emisor}")%20(Moody%27s%20OR%20Fitch%20OR%20Downgrade%20OR%20Outlook%20OR%20Perspectiva)'
-    else:
-        cod_bvl = nemonicos_contingencia.get(emisor, emisor)
-        query_bvl = f'("{emisor}"%20OR%20"{cod_bvl}")%20(Moody%27s%20OR%20Downgrade%20OR%20Sindicado%20OR%20SMV%20OR%20BVL%20OR%20Outlook%20OR%20Suscripcion%20OR%20"Aumento%20de%20Capital")'
+    try:
+        if not emisor or prod not in datos_centralizados: continue
+        
+        is_soberano = emisor in soberanos_requeridos
+        emisor_encoded = urllib.parse.quote(emisor)
+        ventana_tiempo = "tbs=qdr:m6" if (is_soberano or emisor.lower() in ["cerro verde", "alicorp", "mexico"]) else "tbs=qdr:m"
+        
+        if is_soberano:
+            query_bvl = f'("{emisor}"%20OR%20"Republica%20de%20{emisor}")%20(Moody%27s%20OR%20Fitch%20OR%20Downgrade%20OR%20Outlook%20OR%20Perspectiva)'
+        else:
+            cod_bvl = nemonicos_contingencia.get(emisor, emisor)
+            query_bvl = f'("{emisor}"%20OR%20"{cod_bvl}")%20(Moody%27s%20OR%20Downgrade%20OR%20Sindicado%20OR%20SMV%20OR%20BVL%20OR%20Outlook%20OR%20Suscripcion%20OR%20"Aumento%20de%20Capital")'
 
-    urls_red = [
-        f"https://news.google.com/rss/search?q={query_bvl}&hl=es-419&gl=PE&ceid=PE:es-419&{ventana_tiempo}",
-        f"https://news.google.com/rss/search?q={emisor_encoded}%20site:bloomberglinea.com&hl=es-419&gl=PE&ceid=PE:es-419&{ventana_tiempo}"
-    ]
-    
-    for url in urls_red:
-        try:
-            req = urllib.request.Request(url, headers=HEADERS_NATIVOS)
-            with urllib.request.urlopen(req, context=contexto_ssl_seguro, timeout=8) as response:
-                xml_raw = response.read().decode('utf-8', errors='ignore')
-            
-            items_raw = re.findall(r'<item>([\s\S]*?)</item>', xml_raw)
-            
-            for item_content in items_raw[:5]:
-                t_match = re.search(r'<title>([\s\S]*?)</title>', item_content)
-                l_match = re.search(r'<link>([\s\S]*?)</link>', item_content)
-                d_match = re.search(r'<pubDate>([\s\S]*?)</pubDate>', item_content)
-                f_match = re.search(r'<source[^>]*>([\s\S]*?)</source>', item_content)
+        urls_red = [
+            f"https://news.google.com/rss/search?q={query_bvl}&hl=es-419&gl=PE&ceid=PE:es-419&{ventana_tiempo}",
+            f"https://news.google.com/rss/search?q={emisor_encoded}%20site:bloomberglinea.com&hl=es-419&gl=PE&ceid=PE:es-419&{ventana_tiempo}"
+        ]
+        
+        for url in urls_red:
+            try:
+                req = urllib.request.Request(url, headers=HEADERS_NATIVOS)
+                with urllib.request.urlopen(req, context=contexto_ssl_seguro, timeout=8) as response:
+                    xml_raw = response.read().decode('utf-8', errors='ignore')
                 
-                titulo = t_match.group(1).strip() if t_match else ""
-                link = l_match.group(1).strip() if l_match else ""
-                pub_date = d_match.group(1).strip() if d_match else ""
-                fuente = f_match.group(1).strip() if f_match else "Prensa"
+                items_raw = re.findall(r'<item>([\s\S]*?)</item>', xml_raw)
                 
-                if not titulo or not link: continue
-                if "bloomberglinea.com" in link: fuente = "Bloomberg Línea"
-                
-                if patron_fechas_viejas.search(titulo) or patron_basura.search(titulo): continue
-                if is_soberano and not any(x in titulo.lower() for x in [emisor.lower(), 'perspectiva', 'rating', 'downgrade', 'outlook']): continue
-                
-                raiz_emisor = emisor.split()[0].replace(",", "").replace(".", "").strip().lower()
-                cod_bvl_lower = nemonicos_contingencia.get(emisor, "---").lower()
-                
-                if not is_soberano and (raiz_emisor not in titulo.lower() and cod_bvl_lower not in titulo.lower()):
-                    continue
-                
-                if link in links_globales_procesados or titulo in links_globales_procesados: continue
-                links_globales_procesados.add(link)
-                links_globales_procesados.add(titulo)
-                
-                es_prioritaria = bool(patron_riesgo.search(titulo)) or "bloomberg" in fuente.lower() or is_soberano
-                fecha_limpia = pub_date[:11].strip() if pub_date else "Hoy"
-                
-                # Formateo seguro de títulos de red
-                titulo_final = titulo
-                if " - " in titulo:
-                    partes_t = titulo.split(" - ")
-                    if len(partes_t) > 0 and partes_t[0].strip():
-                        titulo_final = partes_t[0].strip()
-                
-                datos_centralizados[prod][emisor]["noticias"].append({
-                    "titulo": titulo_final,
-                    "link": link,
-                    "fuente": fuente,
-                    "fecha": fecha_limpia,
-                    "prioritaria": es_prioritaria
-                })
-        except:
-            pass 
+                for item_content in items_raw[:5]:
+                    t_match = re.search(r'<title>([\s\S]*?)</title>', item_content)
+                    l_match = re.search(r'<link>([\s\S]*?)</link>', item_content)
+                    d_match = re.search(r'<pubDate>([\s\S]*?)</pubDate>', item_content)
+                    f_match = re.search(r'<source[^>]*>([\s\S]*?)</source>', item_content)
+                    
+                    titulo = t_match.group(1).strip() if t_match else ""
+                    link = l_match.group(1).strip() if l_match else ""
+                    pub_date = d_match.group(1).strip() if d_match else ""
+                    fuente = f_match.group(1).strip() if f_match else "Prensa"
+                    
+                    if not titulo or not link: continue
+                    if "bloomberglinea.com" in link: fuente = "Bloomberg Línea"
+                    
+                    if patron_fechas_viejas.search(titulo) or patron_basura.search(titulo): continue
+                    if is_soberano and not any(x in titulo.lower() for x in [emisor.lower(), 'perspectiva', 'rating', 'downgrade', 'outlook']): continue
+                    
+                    raiz_emisor = emisor.split()[0].replace(",", "").replace(".", "").strip().lower()
+                    cod_bvl_lower = nemonicos_contingencia.get(emisor, "---").lower()
+                    
+                    if not is_soberano and (raiz_emisor not in titulo.lower() and cod_bvl_lower not in titulo.lower()):
+                        continue
+                    
+                    if link in links_globales_procesados or titulo in links_globales_procesados: continue
+                    links_globales_procesados.add(link)
+                    links_globales_procesados.add(titulo)
+                    
+                    es_prioritaria = bool(patron_riesgo.search(titulo)) or "bloomberg" in fuente.lower() or is_soberano
+                    fecha_limpia = pub_date[:11].strip() if pub_date else "Hoy"
+                    
+                    titulo_final = titulo
+                    if " - " in titulo:
+                        partes_t = titulo.split(" - ")
+                        if len(partes_t) > 0 and partes_t[0].strip():
+                            titulo_final = partes_t[0].strip()
+                    
+                    datos_centralizados[prod][emisor]["noticias"].append({
+                        "titulo": titulo_final,
+                        "link": link,
+                        "fuente": fuente,
+                        "fecha": fecha_limpia,
+                        "prioritaria": es_prioritaria
+                    })
+            except:
+                pass
+    except:
+        pass 
 
 # --- FASE 3: ORDENACIÓN DE ALERTAS DE CRÉDITO ---
 for prod in orden_productos:
@@ -351,7 +354,8 @@ html_content += """
     </div>
 </body>
 </html>
+
 # --- ESCRIBIR EL ARCHIVO FINAL EN EL REPOSITORIO ---
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(html_content)
-print("¡Fichero index.html unificado y completado con éxito con protección ante bloqueos!")
+print("¡Fichero index.html unificado y completado con éxito!")
