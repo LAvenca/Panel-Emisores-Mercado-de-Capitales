@@ -1,33 +1,9 @@
-name: Actualizacion Diaria de Noticias
-
-on:
-  schedule:
-    # Esto es el CRON (indica al robot que corra todos los días)
-    - cron: '0 6 * * *'
-  workflow_dispatch: # Permite activarlo manualmente
-
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-    - name: Clonar el repositorio
-      uses: actions/checkout@v4
-
-    - name: Configurar Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.x'
-
-    - name: Ejecutar script de noticias
-      run: python actualizar_noticias.py
-
-    - name: Guardar cambios y subir a GitHub
+- name: Guardar cambios y subir a GitHub
       run: |
         git config --global user.name "GitHub Action Bot"
         git config --global user.email "actions@github.com"
+        # Asegurar que el robot tenga los últimos cambios antes de subir
+        git pull --rebase origin main
         git add index.html
         git diff-index --quiet HEAD || git commit -m "Actualización automática de noticias"
-        git push
+        git push origin main
