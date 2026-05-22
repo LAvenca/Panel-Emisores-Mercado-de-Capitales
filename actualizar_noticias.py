@@ -57,6 +57,7 @@ SEMAFORO = {
     "BANCO DE CREDITO DEL PERU":            "verde",
     "INTERBANK":                            "verde",
     "BBVA PERU":                            "verde",
+    "BBVA MEXICO":                          "amarillo",
     "SCOTIABANK PERU S.A.A.":              "verde",
     "MIBANCO":                              "verde",
     "BANCO GNB PERU S.A.":                  "amarillo",
@@ -172,13 +173,44 @@ PALABRAS_IGNORAR = {
 
 TOKENS_GENERICOS = {
     'banco', 'fondo', 'corp', 'group', 'grupo', 'financiera',
-    'inversiones', 'holding', 'capital', 'asset', 'trust'
+    'inversiones', 'holding', 'capital', 'asset', 'trust', 'management'
 }
 
 PREFIJOS_IGNORAR = {
     'administradora', 'administrador', 'compania', 'compañia',
     'empresa', 'grupo', 'corporacion', 'corporación', 'sociedad'
 }
+
+EMISORES_EXTRANJEROS_KEYWORDS = [
+    'luxembourg', 'ireland', 'ireland limited', 'international',
+    'u.k.', 'europe', 'sicav', 'llp', 'asset management'
+]
+
+PALABRAS_SOBERANAS = [
+    'gobierno', 'republica', 'republic', 'soberano', 'estado peruano',
+    'gobierno peruano', 'ministerio', 'mef', 'bcr', 'bcrp'
+]
+
+TEMAS_FINANCIEROS_SOBERANOS = [
+    'deuda', 'bonos', 'fiscal', 'presupuesto', 'deficit', 'déficit',
+    'inversion', 'inversión', 'economia', 'economía', 'financiamiento',
+    'rating', 'calificacion', 'calificación', 'moody', 'fitch', 's&p',
+    'downgrade', 'upgrade', 'outlook', 'perspectiva', 'credito', 'crédito',
+    'gdp', 'pbi', 'pib', 'inflacion', 'inflación', 'reservas', 'mef',
+    'ministerio de economia', 'banco central', 'tipo de cambio',
+    'tesoro', 'emision', 'emisión', 'spread', 'riesgo pais', 'riesgo país',
+    'impuesto', 'tributario', 'recaudacion', 'recaudación', 'balanza',
+]
+
+TEMAS_BLACKLIST = [
+    'narcotrafico', 'narcotráfico', 'droga', 'drogas', 'cocaina', 'cocaína',
+    'crimen', 'sicario', 'homicidio', 'asesinato', 'feminicidio',
+    'terremoto', 'sismo', 'huaico', 'inundacion', 'inundación',
+    'futbol', 'fútbol', 'deporte', 'partido', 'elecciones', 'candidato',
+    'keiko', 'fujimori', 'castillo', 'boluarte', 'congreso', 'vacancia',
+    'farandula', 'farándula', 'espectaculo', 'espectáculo', 'television',
+    'accidente', 'incendio', 'rescate',
+]
 
 ALIAS_EMISORES = {
     "jockey plaza":        "Jockey Plaza",
@@ -202,7 +234,9 @@ ALIAS_EMISORES = {
     "banco gnb":           "Banco GNB",
     "mibanco":             "Mibanco",
     "financiera efectiva": "Financiera Efectiva",
-    "bbva":                "BBVA Peru",
+    "bbva peru":           "BBVA Peru",
+    "bbva mexico":         "BBVA México",
+    "bbva":                "BBVA",
     "scotiabank":          "Scotiabank Peru",
     "bcp":                 "BCP",
     "interbank":           "Interbank",
@@ -223,7 +257,11 @@ ALIAS_EMISORES = {
     "lima airport":        "LAP",
     "lap":                 "LAP",
     "rutas de lima":       "Rutas de Lima",
-    "auna":                "Auna",
+    "auna s.a":            "Auna",
+    "auna oncologia":      "Auna",
+    "auna salud":          "Auna",
+    "gobierno peruano":    "Gobierno Peruano bonos deuda",
+    "republica del peru":  "República del Perú deuda soberana",
 }
 
 LIMITE_FECHA  = datetime.now() - timedelta(days=7)
@@ -273,11 +311,48 @@ def es_reciente(fecha_raw):
     return dt >= LIMITE_FECHA
 
 # ============================================================
-# 6. UTILIDADES DE NOMBRE
+# 6. UTILIDADES DE NOMBRE Y FILTROS
 # ============================================================
 def limpiar_nombre(emisor):
     nombre = html_mod.unescape(emisor)
     return re.sub(r'\s+', ' ', nombre).strip()
+
+def es_emisor_extranjero(emisor):
+    nombre_lower = limpiar_nombre(emisor).lower()
+    return any(kw in nombre_lower for kw in EMISORES_EXTRANJEROS_KEYWORDS)
+
+def es_emisor_soberano(emisor):
+    nombre_lower = limpiar_nombre(emisor).lower()
+    return any(p in nombre_lower for p in PALABRAS_SOBERANAS)
+
+def titulo_es_relevante_financiero(titulo):
+    """Descarta noticias con temas irrelevantes."""
+    titulo_lower = titulo.lower()
+    return not any(t in titulo_lower for t in TEMAS_BLACKLIST)
+
+def titulo_relevante_para_emisor(titulo, emisor):
+    titulo_lower = titulo.lower()
+    nombre_lower = limpiar_nombre(emisor).lower()
+
+    # Filtro global blacklist
+    if not titulo_es_relevante_financiero(titulo):
+        return False
+
+    # Para "Auna": word boundary
+    if 'auna' in nombre_lower and len(nombre_lower) < 10:
+        return bool(re.search(r'\bauna\b', titulo_lower))
+
+    # Para fondos extranjeros: nombre exacto
+    if es_emisor_extranjero(emisor):
+        variantes = variantes_emisor(emisor)
+        termino = variantes[0].lower() if variantes else nombre_lower
+        return termino in titulo_lower
+
+    # Para emisores soberanos: exigir contenido financiero
+    if es_emisor_soberano(emisor):
+        return any(t in titulo_lower for t in TEMAS_FINANCIEROS_SOBERANOS)
+
+    return True
 
 def variantes_emisor(emisor):
     emisor_clean = limpiar_nombre(emisor)
@@ -285,28 +360,40 @@ def variantes_emisor(emisor):
     sufijos = (
         r'\b(S\.A\.A\.|S\.A\.C\.|S\.A\.|S\.A|SAA|SAC|S\.A\.B\.|S\.A\.B|'
         r'Corp\.?|Ltd\.?|Inc\.?|Co\.?|Perú|Peru|del Perú|de Peru|'
-        r'Shopping Center|Centro Comercial|Administradora|Administrador)\b'
+        r'Shopping Center|Centro Comercial|Administradora|Administrador|'
+        r'Asset Management|Investments?|Fund|Luxembourg|Ireland|Europe|SICAV|LLP)\b'
     )
     limpio = re.sub(sufijos, '', emisor_clean, flags=re.IGNORECASE).strip().strip('.,&')
     limpio = re.sub(r'\s+', ' ', limpio).strip()
+
     variantes = []
     emisor_lower = emisor_clean.lower()
+
+    # Alias: priorizar match más largo
+    mejor_alias = None
+    mejor_len   = 0
     for clave, alias in ALIAS_EMISORES.items():
-        if clave.strip() in emisor_lower:
-            variantes.append(alias)
-            break
+        if clave.strip() in emisor_lower and len(clave) > mejor_len:
+            mejor_alias = alias
+            mejor_len   = len(clave)
+    if mejor_alias:
+        variantes.append(mejor_alias)
+
     if limpio and limpio not in variantes:
         variantes.append(limpio)
+
     palabras = [p for p in limpio.split() if p.lower() not in PREFIJOS_IGNORAR]
     if len(palabras) >= 2:
         dos = f"{palabras[0]} {palabras[1]}"
         if dos not in variantes:
             variantes.append(dos)
+
     if palabras:
         primera = palabras[0]
-        if primera not in variantes and len(primera) > 3:
+        if primera not in variantes and len(primera) > 4 and primera.lower() not in TOKENS_GENERICOS:
             variantes.append(primera)
-    return variantes
+
+    return variantes if variantes else [emisor_clean]
 
 def tokens_significativos(emisor):
     emisor_clean = limpiar_nombre(emisor)
@@ -314,7 +401,8 @@ def tokens_significativos(emisor):
     sufijos = (
         r'\b(S\.A\.A\.|S\.A\.C\.|S\.A\.|S\.A|SAA|SAC|S\.A\.B\.|'
         r'Corp\.?|Ltd\.?|Inc\.?|Co\.?|Perú|Peru|'
-        r'Shopping Center|Centro Comercial|Administradora)\b'
+        r'Shopping Center|Centro Comercial|Administradora|'
+        r'Asset Management|Luxembourg|Ireland|Europe|SICAV|LLP)\b'
     )
     limpio = re.sub(sufijos, '', emisor_clean, flags=re.IGNORECASE)
     return [
@@ -322,6 +410,7 @@ def tokens_significativos(emisor):
         for w in limpio.split()
         if w.lower().strip('.,&') not in PALABRAS_IGNORAR
         and len(w.strip('.,&')) > 2
+        and w.lower().strip('.,&') not in TOKENS_GENERICOS
     ]
 
 def calcular_minimo(tokens):
@@ -382,6 +471,8 @@ def cargar_fuentes_prioritarias():
 # 8. BUSCAR EN CACHE BVL/SMV
 # ============================================================
 def buscar_en_cache_prioritarias(emisor):
+    if es_emisor_extranjero(emisor):
+        return []
     tokens  = tokens_significativos(emisor)
     nombres = variantes_emisor(emisor)
     termino_principal = nombres[0].lower() if nombres else limpiar_nombre(emisor).lower()
@@ -398,6 +489,7 @@ def buscar_en_cache_prioritarias(emisor):
             if matches < minimo: continue
             if len(termino_principal) > 5 and termino_principal not in titulo_lower:
                 if matches < 2: continue
+        if not titulo_relevante_para_emisor(entrada["titulo"], emisor): continue
         key = entrada["titulo"][:60]
         if key not in vistos:
             vistos.add(key)
@@ -431,6 +523,7 @@ def buscar_bloomberg_linea(emisor):
             if not alias:
                 matches = sum(1 for tk in tokens if tk in titulo.lower())
                 if matches < minimo: continue
+            if not titulo_relevante_para_emisor(titulo, emisor): continue
             resultados.append({
                 "titulo": titulo, "fuente": "Bloomberg Línea",
                 "link": link, "fecha": formatear_fecha(fecha),
@@ -478,6 +571,7 @@ def buscar_google_news(emisor):
                     if not con_alias:
                         matches = sum(1 for tk in tokens if tk in titulo.lower())
                         if matches < minimo: continue
+                    if not titulo_relevante_para_emisor(titulo, emisor): continue
                     vistos.add(titulo)
                     es_alerta = bool(re.search('|'.join(PALABRAS_CREDITICIAS), titulo, re.IGNORECASE))
                     resultados.append({
@@ -491,7 +585,7 @@ def buscar_google_news(emisor):
     return resultados[:6]
 
 # ============================================================
-# 11. CONSOLIDAR Y ORDENAR NOTICIAS
+# 11. CONSOLIDAR Y ORDENAR NOTICIAS (mínimo 4)
 # ============================================================
 def obtener_noticias(emisor):
     todas = (
@@ -508,7 +602,42 @@ def obtener_noticias(emisor):
             n["score"] = calcular_score(n["titulo"])
             resultado.append(n)
         if len(resultado) >= 6: break
+
     resultado.sort(key=lambda x: -(5 if x.get("alerta") else x.get("score", 0)))
+
+    # Fallback: si hay menos de 4, ampliar a último mes con búsqueda financiera
+    if len(resultado) < 4:
+        nombres = variantes_emisor(emisor)
+        termino = nombres[0] if nombres else limpiar_nombre(emisor)
+        termino_busqueda = f'{termino} finanzas economia deuda bonos'
+        try:
+            url = f"https://news.google.com/rss/search?q={urllib.parse.quote(termino_busqueda)}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:m,sbd:1"
+            req = urllib.request.Request(url, headers=HEADERS)
+            with urllib.request.urlopen(req, context=contexto, timeout=10) as res:
+                data = res.read().decode('utf-8', errors='ignore')
+            titulos_vistos = {n["titulo"] for n in resultado}
+            for item in re.findall(r'<item>([\s\S]*?)</item>', data)[:10]:
+                if len(resultado) >= 4: break
+                t = re.search(r'<title><!\[CDATA\[(.*?)\]\]></title>|<title>(.*?)</title>', item)
+                l = re.search(r'<link>(.*?)</link>', item)
+                d = re.search(r'<pubDate>(.*?)</pubDate>', item)
+                s = re.search(r'<source[^>]*>(.*?)</source>', item)
+                titulo = (t.group(1) or t.group(2) or "").strip() if t else ""
+                link   = l.group(1).strip() if l else "#"
+                fecha  = d.group(1).strip() if d else ""
+                fuente = (s.group(1) or "Prensa").strip() if s else "Prensa"
+                if not titulo or titulo in titulos_vistos: continue
+                if not titulo_es_relevante_financiero(titulo): continue
+                titulos_vistos.add(titulo)
+                es_alerta = bool(re.search('|'.join(PALABRAS_CREDITICIAS), titulo, re.IGNORECASE))
+                resultado.append({
+                    "titulo": titulo, "fuente": fuente,
+                    "link": link, "fecha": formatear_fecha(fecha),
+                    "alerta": es_alerta, "score": calcular_score(titulo)
+                })
+        except Exception:
+            pass
+
     return resultado[:6]
 
 # ============================================================
@@ -615,11 +744,13 @@ if not emisores_data:
 else:
     print(f"\n📋 {len(emisores_data)} emisores cargados desde Excel:")
     for e, s in emisores_data.items():
-        v     = variantes_emisor(e)
-        color = get_semaforo(e)
-        sem   = f"[{color.upper()}]" if color else "[sin semáforo]"
-        prior = "⭐" if es_emisor_prioritario(e) else ""
-        print(f"   {limpiar_nombre(e):50s} → {v[0]:30s} {sem} {prior}")
+        v      = variantes_emisor(e)
+        color  = get_semaforo(e)
+        sem    = f"[{color.upper()}]" if color else "[sin semáforo]"
+        prior  = "⭐" if es_emisor_prioritario(e) else ""
+        extran = "🌍" if es_emisor_extranjero(e) else ""
+        sobera = "🏛" if es_emisor_soberano(e) else ""
+        print(f"   {limpiar_nombre(e):50s} → {v[0]:30s} {sem} {prior}{extran}{sobera}")
 
 segmentos = {}
 for emisor, seg in emisores_data.items():
@@ -655,7 +786,6 @@ for seg in segs_ordenados:
         )
 
     emisores_con_noticias.sort(key=sort_key_emisor)
-
     if emisores_con_noticias:
         resultados_por_segmento[seg] = emisores_con_noticias
     else:
@@ -666,7 +796,6 @@ for seg in segs_ordenados:
 # ============================================================
 total_emisores = sum(len(v) for v in resultados_por_segmento.values())
 
-# Construir tabs nav
 tabs_nav = f"""
     <button onclick="mostrarTab('todos')" id="tab-btn-todos"
       class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold border transition-all
@@ -684,7 +813,6 @@ for seg, items in resultados_por_segmento.items():
       {icono} {html.escape(seg)} <span class="ml-1 text-[10px] opacity-60">({len(items)})</span>
     </button>"""
 
-# Construir contenido de tabs
 tabs_content = '<div id="tab-todos" class="tab-panel">'
 for seg, items in resultados_por_segmento.items():
     tc = COLOR_SEG.get(seg, ("text-gray-400",))[0]
@@ -696,7 +824,7 @@ for seg, items in resultados_por_segmento.items():
 tabs_content += '</div>'
 
 for seg, items in resultados_por_segmento.items():
-    tc = COLOR_SEG.get(seg, ("text-gray-400",))[0]
+    tc  = COLOR_SEG.get(seg, ("text-gray-400",))[0]
     sid = seg.lower().replace(' ', '-')
     tabs_content += f"""
 <div id="tab-{sid}" class="tab-panel hidden">
@@ -704,7 +832,6 @@ for seg, items in resultados_por_segmento.items():
   <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">{render_cards(items, seg)}</div>
 </div>"""
 
-# HTML final
 page = f"""<!DOCTYPE html>
 <html lang="es">
 <head>
