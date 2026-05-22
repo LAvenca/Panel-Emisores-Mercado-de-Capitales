@@ -3,6 +3,7 @@ import urllib.parse
 import re
 import ssl
 import html
+import html as html_mod
 import zipfile
 from datetime import datetime, timedelta
 
@@ -67,13 +68,19 @@ PALABRAS_CREDITICIAS = [
     'aumento de capital', 'soberano', 'riesgo pais', 'riesgo país', 'spread'
 ]
 
-PALABRAS_IGNORAR = {'de', 'la', 'el', 'los', 'las', 'del', 'y', 'en', 'al',
-                    'sa', 'saa', 'sac', 'sab', 'the', 'of', 'and'}
+PALABRAS_IGNORAR = {
+    'de', 'la', 'el', 'los', 'las', 'del', 'y', 'en', 'al',
+    'sa', 'saa', 'sac', 'sab', 'the', 'of', 'and'
+}
 
-LIMITE_FECHA = datetime.now() - timedelta(days=30)
+TOKENS_GENERICOS = {
+    'banco', 'fondo', 'corp', 'group', 'grupo', 'financiera',
+    'inversiones', 'holding', 'capital', 'asset', 'trust'
+}
+
+LIMITE_FECHA  = datetime.now() - timedelta(days=30)
 fecha_reporte = datetime.now().strftime("%d/%m/%Y %H:%M")
 
-# Cache global BVL/SMV
 cache_prioritarias = []
 
 # ============================================================
@@ -119,12 +126,18 @@ def es_reciente(fecha_raw):
     return dt >= LIMITE_FECHA
 
 # ============================================================
-# 4. VARIANTES Y TOKENS DEL EMISOR
+# 4. UTILIDADES DE NOMBRE
 # ============================================================
+def limpiar_nombre(emisor):
+    nombre = html_mod.unescape(emisor)
+    nombre = re.sub(r'\s+', ' ', nombre).strip()
+    return nombre
+
 def variantes_emisor(emisor):
-    """Elimina sufijos legales y genera términos de búsqueda limpios."""
-    sufijos = r'\b(S\.A\.A\.|S\.A\.C\.|S\.A\.|S\.A|SAA|SAC|S\.A\.B\.|S\.A\.B|Corp\.?|Ltd\.?|Inc\.?|Perú|Peru|del Perú|de Peru)\b'
-    limpio = re.sub(sufijos, '', emisor, flags=re.IGNORECASE).strip().strip('.,')
+    emisor = limpiar_nombre(emisor)
+    sufijos = (r'\b(S\.A\.A\.|S\.A\.C\.|S\.A\.|S\.A|SAA|SAC|S\.A\.B\.|S\.A\.B|'
+               r'Corp\.?|Ltd\.?|Inc\.?|Co\.?|Perú|Peru|del Perú|de Peru)\b')
+    limpio = re.sub(sufijos, '', emisor, flags=re.IGNORECASE).strip().strip('.,&')
     limpio = re.sub(r'\s+', ' ', limpio).strip()
 
     variantes = []
@@ -142,15 +155,28 @@ def variantes_emisor(emisor):
     return variantes
 
 def tokens_significativos(emisor):
-    """Extrae palabras clave del nombre para matching estricto."""
-    sufijos = r'\b(S\.A\.A\.|S\.A\.C\.|S\.A\.|S\.A|SAA|SAC|S\.A\.B\.|Corp\.?|Ltd\.?|Inc\.?|Perú|Peru)\b'
+    emisor = limpiar_nombre(emisor)
+    sufijos = (r'\b(S\.A\.A\.|S\.A\.C\.|S\.A\.|S\.A|SAA|SAC|S\.A\.B\.|'
+               r'Corp\.?|Ltd\.?|Inc\.?|Co\.?|Perú|Peru)\b')
     limpio = re.sub(sufijos, '', emisor, flags=re.IGNORECASE)
     tokens = [
-        w.lower().strip('.,')
+        w.lower().strip('.,&')
         for w in limpio.split()
-        if w.lower().strip('.,') not in PALABRAS_IGNORAR and len(w.strip('.,')) > 2
+        if w.lower().strip('.,&') not in PALABRAS_IGNORAR
+        and len(w.strip('.,&')) > 2
     ]
     return tokens
+
+def calcular_minimo(tokens):
+    if not tokens:
+        return 1
+    if len(tokens) == 1:
+        return 1
+    if tokens[0] in TOKENS_GENERICOS:
+        return min(2, len(tokens))
+    if len(tokens) <= 2:
+        return 1
+    return 2
 
 # ============================================================
 # 5. FUENTES PRIORITARIAS: BVL Y SMV
@@ -175,10 +201,13 @@ def cargar_fuentes_prioritarias():
                 raw = res.read().decode('utf-8', errors='ignore')
 
             raw = re.sub(r'<script[\s\S]*?</script>', '', raw, flags=re.IGNORECASE)
-            raw = re.sub(r'<style[\s\S]*?</style>', '', raw, flags=re.IGNORECASE)
+            raw = re.sub(r'<style[\s\S]*?</style>',   '', raw, flags=re.IGNORECASE)
 
-            # Extraer links con texto
-            links = re.findall(r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>([\s\S]*?)</a>', raw, re.IGNORECASE)
+            # Links con texto
+            links = re.findall(
+                r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>([\s\S]*?)</a>',
+                raw, re.IGNORECASE
+            )
             for href, texto in links:
                 texto_limpio = re.sub(r'<[^>]+>', ' ', texto).strip()
                 texto_limpio = re.sub(r'\s+', ' ', texto_limpio).strip()
@@ -187,27 +216,28 @@ def cargar_fuentes_prioritarias():
                 if not href.startswith('http'):
                     base = re.match(r'https?://[^/]+', fuente["url"])
                     href = (base.group(0) if base else "") + "/" + href.lstrip("/")
-
                 cache_prioritarias.append({
                     "titulo": texto_limpio,
                     "fuente": fuente["nombre"],
-                    "link": href,
-                    "fecha": "Hoy",
-                    "alerta": bool(re.search('|'.join(PALABRAS_CREDITICIAS), texto_limpio, re.IGNORECASE))
+                    "link":   href,
+                    "fecha":  "Hoy",
+                    "alerta": bool(re.search('|'.join(PALABRAS_CREDITICIAS),
+                                             texto_limpio, re.IGNORECASE))
                 })
 
-            # Líneas de texto puro (útil para SMV con tablas)
-            lineas = [re.sub(r'<[^>]+>', ' ', l).strip() for l in raw.split('\n')]
-            for linea in lineas:
+            # Líneas de texto puro (útil para tablas SMV)
+            for linea in raw.split('\n'):
+                linea = re.sub(r'<[^>]+>', ' ', linea)
                 linea = re.sub(r'\s+', ' ', linea).strip()
                 if len(linea) < 20 or len(linea) > 300:
                     continue
                 cache_prioritarias.append({
                     "titulo": linea,
                     "fuente": fuente["nombre"],
-                    "link": fuente["url"],
-                    "fecha": "Hoy",
-                    "alerta": bool(re.search('|'.join(PALABRAS_CREDITICIAS), linea, re.IGNORECASE))
+                    "link":   fuente["url"],
+                    "fecha":  "Hoy",
+                    "alerta": bool(re.search('|'.join(PALABRAS_CREDITICIAS),
+                                             linea, re.IGNORECASE))
                 })
 
             print(f"    ✓ {fuente['nombre']}: OK")
@@ -215,35 +245,25 @@ def cargar_fuentes_prioritarias():
             print(f"    ✗ {fuente['nombre']} no disponible: {e}")
 
 # ============================================================
-# 6. BUSCAR EN CACHE BVL/SMV — MATCHING ESTRICTO
+# 6. BUSCAR EN CACHE BVL/SMV
 # ============================================================
 def buscar_en_cache_prioritarias(emisor):
-    """
-    Matching estricto: exige que los tokens clave del emisor
-    aparezcan todos en el título — evita falsos positivos entre
-    emisores con palabras comunes (ej: todos los 'Banco X').
-    """
-    resultados = []
-    tokens = tokens_significativos(emisor)
+    tokens  = tokens_significativos(emisor)
     nombres = variantes_emisor(emisor)
-    termino_principal = nombres[0].lower() if nombres else emisor.lower()
+    termino_principal = nombres[0].lower() if nombres else limpiar_nombre(emisor).lower()
+    minimo  = calcular_minimo(tokens)
 
-    # Mínimo de tokens que deben coincidir
-    minimo = min(2, len(tokens)) if len(tokens) >= 2 else len(tokens)
-
+    resultados = []
     vistos = set()
+
     for entrada in cache_prioritarias:
         titulo_lower = entrada["titulo"].lower()
-
-        # 1. Contar cuántos tokens del emisor aparecen
         matches = sum(1 for t in tokens if t in titulo_lower)
         if matches < minimo:
             continue
-
-        # 2. El término principal limpio también debe estar presente
         if len(termino_principal) > 5 and termino_principal not in titulo_lower:
-            continue
-
+            if matches < 2:
+                continue
         key = entrada["titulo"][:60]
         if key not in vistos:
             vistos.add(key)
@@ -257,19 +277,19 @@ def buscar_en_cache_prioritarias(emisor):
 def buscar_bloomberg_linea(emisor):
     resultados = []
     nombres = variantes_emisor(emisor)
-    termino = nombres[0] if nombres else emisor
-    tokens = tokens_significativos(emisor)
-    minimo = min(2, len(tokens)) if len(tokens) >= 2 else len(tokens)
+    termino = nombres[0] if nombres else limpiar_nombre(emisor)
+    tokens  = tokens_significativos(emisor)
+    minimo  = calcular_minimo(tokens)
 
     try:
-        q = urllib.parse.quote(f'{termino} site:bloomberglinea.com')
-        url = f"https://news.google.com/rss/search?q={q}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:m,sbd:1"
+        q   = urllib.parse.quote(f'{termino} site:bloomberglinea.com')
+        url = (f"https://news.google.com/rss/search?"
+               f"q={q}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:m,sbd:1")
         req = urllib.request.Request(url, headers=HEADERS)
         with urllib.request.urlopen(req, context=contexto, timeout=10) as res:
             data = res.read().decode('utf-8', errors='ignore')
 
-        items = re.findall(r'<item>([\s\S]*?)</item>', data)
-        for item in items[:5]:
+        for item in re.findall(r'<item>([\s\S]*?)</item>', data)[:5]:
             t = re.search(r'<title><!\[CDATA\[(.*?)\]\]></title>|<title>(.*?)</title>', item)
             l = re.search(r'<link>(.*?)</link>', item)
             d = re.search(r'<pubDate>(.*?)</pubDate>', item)
@@ -280,19 +300,17 @@ def buscar_bloomberg_linea(emisor):
 
             if not titulo or not es_reciente(fecha):
                 continue
-
-            # Validar que el título realmente mencione al emisor
-            titulo_lower = titulo.lower()
-            matches = sum(1 for tk in tokens if tk in titulo_lower)
+            matches = sum(1 for tk in tokens if tk in titulo.lower())
             if matches < minimo:
                 continue
 
             resultados.append({
                 "titulo": titulo,
                 "fuente": "Bloomberg Línea",
-                "link": link,
-                "fecha": formatear_fecha(fecha),
-                "alerta": bool(re.search('|'.join(PALABRAS_CREDITICIAS), titulo, re.IGNORECASE))
+                "link":   link,
+                "fecha":  formatear_fecha(fecha),
+                "alerta": bool(re.search('|'.join(PALABRAS_CREDITICIAS),
+                                         titulo, re.IGNORECASE))
             })
     except Exception:
         pass
@@ -304,11 +322,11 @@ def buscar_bloomberg_linea(emisor):
 # ============================================================
 def buscar_google_news(emisor):
     resultados = []
-    vistos = set()
+    vistos  = set()
     nombres = variantes_emisor(emisor)
-    termino = nombres[0] if nombres else emisor
-    tokens = tokens_significativos(emisor)
-    minimo = min(2, len(tokens)) if len(tokens) >= 2 else len(tokens)
+    termino = nombres[0] if nombres else limpiar_nombre(emisor)
+    tokens  = tokens_significativos(emisor)
+    minimo  = calcular_minimo(tokens)
 
     queries = [
         (
@@ -325,17 +343,13 @@ def buscar_google_news(emisor):
 
     for query, es_credit in queries:
         try:
-            q_enc = urllib.parse.quote(query)
-            url = (
-                f"https://news.google.com/rss/search?"
-                f"q={q_enc}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:m,sbd:1"
-            )
+            url = (f"https://news.google.com/rss/search?"
+                   f"q={urllib.parse.quote(query)}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:m,sbd:1")
             req = urllib.request.Request(url, headers=HEADERS)
             with urllib.request.urlopen(req, context=contexto, timeout=10) as res:
                 data = res.read().decode('utf-8', errors='ignore')
 
-            items = re.findall(r'<item>([\s\S]*?)</item>', data)
-            for item in items[:6]:
+            for item in re.findall(r'<item>([\s\S]*?)</item>', data)[:6]:
                 t = re.search(r'<title><!\[CDATA\[(.*?)\]\]></title>|<title>(.*?)</title>', item)
                 l = re.search(r'<link>(.*?)</link>', item)
                 d = re.search(r'<pubDate>(.*?)</pubDate>', item)
@@ -350,21 +364,18 @@ def buscar_google_news(emisor):
                     continue
                 if not es_reciente(fecha):
                     continue
-
-                # Validar que el título mencione al emisor
-                titulo_lower = titulo.lower()
-                matches = sum(1 for tk in tokens if tk in titulo_lower)
+                matches = sum(1 for tk in tokens if tk in titulo.lower())
                 if matches < minimo:
                     continue
 
                 vistos.add(titulo)
-                es_alerta = bool(re.search('|'.join(PALABRAS_CREDITICIAS), titulo, re.IGNORECASE))
-
+                es_alerta = bool(re.search('|'.join(PALABRAS_CREDITICIAS),
+                                            titulo, re.IGNORECASE))
                 resultados.append({
                     "titulo": titulo,
                     "fuente": fuente,
-                    "link": link,
-                    "fecha": formatear_fecha(fecha),
+                    "link":   link,
+                    "fecha":  formatear_fecha(fecha),
                     "alerta": es_alerta or es_credit
                 })
 
@@ -378,15 +389,14 @@ def buscar_google_news(emisor):
     return resultados[:6]
 
 # ============================================================
-# 9. CONSOLIDAR NOTICIAS POR EMISOR
+# 9. CONSOLIDAR NOTICIAS
 # ============================================================
 def obtener_noticias(emisor):
-    noticias_bvl_smv   = buscar_en_cache_prioritarias(emisor)
-    noticias_bloomberg = buscar_bloomberg_linea(emisor)
-    noticias_google    = buscar_google_news(emisor)
-
-    todas = noticias_bvl_smv + noticias_bloomberg + noticias_google
-
+    todas = (
+        buscar_en_cache_prioritarias(emisor) +
+        buscar_bloomberg_linea(emisor) +
+        buscar_google_news(emisor)
+    )
     vistos = set()
     resultado = []
     for n in todas:
@@ -401,8 +411,16 @@ def obtener_noticias(emisor):
     return resultado[:6]
 
 # ============================================================
-# 10. BADGE DE FUENTE
+# 10. HELPERS HTML
 # ============================================================
+ORDEN_SEG = ["Renta Fija", "Renta Variable", "Fondos", "Alternativos"]
+COLOR_SEG = {
+    "Renta Fija":     ("text-blue-400",    "border-blue-500/30",    "bg-blue-500/10"),
+    "Renta Variable": ("text-purple-400",  "border-purple-500/30",  "bg-purple-500/10"),
+    "Fondos":         ("text-emerald-400", "border-emerald-500/30", "bg-emerald-500/10"),
+    "Alternativos":   ("text-amber-400",   "border-amber-500/30",   "bg-amber-500/10"),
+}
+
 def badge_fuente(fuente):
     f = fuente.lower()
     if "bvl"       in f: return "bg-blue-900/40 text-blue-300 border-blue-600/40"
@@ -410,25 +428,21 @@ def badge_fuente(fuente):
     if "bloomberg" in f: return "bg-orange-900/40 text-orange-300 border-orange-600/40"
     return "bg-gray-800 text-gray-400 border-gray-700"
 
+def dot_color(n):
+    if n["alerta"]:                          return "bg-red-500"
+    if "bvl"       in n["fuente"].lower():   return "bg-blue-500"
+    if "smv"       in n["fuente"].lower():   return "bg-indigo-500"
+    if "bloomberg" in n["fuente"].lower():   return "bg-orange-500"
+    return "bg-gray-500"
+
 # ============================================================
-# 11. EJECUCIÓN
+# 11. EJECUCIÓN PRINCIPAL
 # ============================================================
 cargar_fuentes_prioritarias()
 emisores_data = leer_emisores_excel("Emisores.xlsx")
 
 if not emisores_data:
     print("ADVERTENCIA: No se leyeron emisores. Verifica Emisores.xlsx")
-
-# ============================================================
-# 12. CONSTRUCCIÓN DEL HTML
-# ============================================================
-ORDEN_SEG = ["Renta Fija", "Renta Variable", "Fondos", "Alternativos"]
-COLOR_SEG = {
-    "Renta Fija":     ("text-blue-400",   "border-blue-500/30",   "bg-blue-500/10"),
-    "Renta Variable": ("text-purple-400", "border-purple-500/30", "bg-purple-500/10"),
-    "Fondos":         ("text-emerald-400","border-emerald-500/30","bg-emerald-500/10"),
-    "Alternativos":   ("text-amber-400",  "border-amber-500/30",  "bg-amber-500/10"),
-}
 
 segmentos = {}
 for emisor, seg in emisores_data.items():
@@ -439,8 +453,11 @@ segs_ordenados = sorted(
     key=lambda s: ORDEN_SEG.index(s) if s in ORDEN_SEG else 99
 )
 
-html_parts = []
-html_parts.append(f"""<!DOCTYPE html>
+# ============================================================
+# 12. CONSTRUCCIÓN HTML
+# ============================================================
+out = []
+out.append(f"""<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
@@ -460,9 +477,7 @@ html_parts.append(f"""<!DOCTYPE html>
         Fuentes: BVL · SMV · Bloomberg Línea · Google News &nbsp;·&nbsp; Último mes
       </p>
     </div>
-    <div class="text-right text-xs text-gray-500 font-mono">
-      Actualizado: {fecha_reporte}
-    </div>
+    <div class="text-xs text-gray-500 font-mono">Actualizado: {fecha_reporte}</div>
   </header>
 
   <div class="flex flex-wrap gap-3 mb-8 text-xs">
@@ -487,7 +502,7 @@ html_parts.append(f"""<!DOCTYPE html>
 for seg in segs_ordenados:
     tc, bc, bgc = COLOR_SEG.get(seg, ("text-gray-400", "border-gray-600", "bg-gray-800"))
 
-    html_parts.append(f"""
+    out.append(f"""
   <div class="mb-12">
     <h2 class="text-lg font-bold mb-5 pb-2 border-b border-gray-800 {tc}">
       {html.escape(seg)}
@@ -496,19 +511,24 @@ for seg in segs_ordenados:
 """)
 
     for emisor in segmentos[seg]:
-        print(f"  ▶ {emisor} ({seg})")
+        nombre_display = limpiar_nombre(emisor)
+        print(f"  ▶ {nombre_display} ({seg})")
         noticias     = obtener_noticias(emisor)
         tiene_alerta = any(n["alerta"] for n in noticias)
 
-        card_border = "border-red-500/50 shadow-red-950/30 shadow-lg" if tiene_alerta else "border-gray-800"
-        card_bg     = "bg-gradient-to-b from-gray-900 to-red-950/15" if tiene_alerta else "bg-gray-900"
+        cb = "border-red-500/50 shadow-red-950/30 shadow-lg" if tiene_alerta else "border-gray-800"
+        bg = "bg-gradient-to-b from-gray-900 to-red-950/15"  if tiene_alerta else "bg-gray-900"
 
-        html_parts.append(f"""
-      <div class="rounded-xl border p-5 flex flex-col gap-3 {card_border} {card_bg}">
+        out.append(f"""
+      <div class="rounded-xl border p-5 flex flex-col gap-3 {cb} {bg}">
         <div class="flex justify-between items-center border-b border-gray-800/70 pb-2.5">
-          <h3 class="text-sm font-bold uppercase tracking-wide">{html.escape(emisor)}</h3>
+          <h3 class="text-sm font-bold uppercase tracking-wide">
+            {html.escape(nombre_display)}
+          </h3>
           <div class="flex items-center gap-1.5">
-            <span class="text-[10px] border px-2 py-0.5 rounded {tc} {bc} {bgc}">{html.escape(seg)}</span>
+            <span class="text-[10px] border px-2 py-0.5 rounded {tc} {bc} {bgc}">
+              {html.escape(seg)}
+            </span>
             {'<span class="text-[9px] bg-red-500/20 border border-red-500/30 text-red-400 px-2 py-0.5 rounded font-bold animate-pulse">⚠ Rating Alert</span>' if tiene_alerta else ""}
           </div>
         </div>
@@ -517,52 +537,48 @@ for seg in segs_ordenados:
 
         if noticias:
             for n in noticias:
-                dot = (
-                    "bg-red-500"    if n["alerta"] else
-                    "bg-blue-500"   if "bvl"       in n["fuente"].lower() else
-                    "bg-indigo-500" if "smv"       in n["fuente"].lower() else
-                    "bg-orange-500" if "bloomberg" in n["fuente"].lower() else
-                    "bg-gray-500"
-                )
-                ibg  = "bg-red-950/30 border-red-500/40"    if n["alerta"] else "bg-gray-800/40 border-gray-700/40"
-                itxt = "text-red-200" if n["alerta"] else "text-gray-300"
-                fb   = badge_fuente(n["fuente"])
+                dc  = dot_color(n)
+                ibg = "bg-red-950/30 border-red-500/40"   if n["alerta"] else "bg-gray-800/40 border-gray-700/40"
+                itx = "text-red-200" if n["alerta"] else "text-gray-300"
+                fb  = badge_fuente(n["fuente"])
 
-                html_parts.append(f"""
+                out.append(f"""
           <div class="border rounded-lg p-2.5 {ibg}">
             <div class="flex gap-2 items-start">
-              <span class="mt-1.5 w-2 h-2 rounded-full shrink-0 {dot}"></span>
+              <span class="mt-1.5 w-2 h-2 rounded-full shrink-0 {dc}"></span>
               <div class="flex-1 min-w-0">
                 <a href="{html.escape(n['link'])}" target="_blank"
-                   class="text-xs font-medium {itxt} hover:text-blue-400 leading-snug line-clamp-3">
+                   class="text-xs font-medium {itx} hover:text-blue-400 leading-snug line-clamp-3">
                   {html.escape(n['titulo'])}
                 </a>
                 <div class="flex justify-between items-center mt-1.5 gap-2">
                   <span class="text-[10px] border px-1.5 py-0.5 rounded font-mono {fb}">
                     {html.escape(n['fuente'])}
                   </span>
-                  <span class="text-[10px] text-gray-500 font-mono shrink-0">{html.escape(n['fecha'])}</span>
+                  <span class="text-[10px] text-gray-500 font-mono shrink-0">
+                    {html.escape(n['fecha'])}
+                  </span>
                 </div>
               </div>
             </div>
           </div>
 """)
         else:
-            html_parts.append("""
+            out.append("""
           <p class="text-xs text-gray-600 italic py-2">Sin noticias recientes este mes.</p>
 """)
 
-        html_parts.append("""
+        out.append("""
         </div>
       </div>
 """)
 
-    html_parts.append("""
+    out.append("""
     </div>
   </div>
 """)
 
-html_parts.append(f"""
+out.append(f"""
   <footer class="mt-12 pt-6 border-t border-gray-800 text-center text-xs text-gray-600">
     Monitor Crediticio · BVL · SMV · Bloomberg Línea · Google News · Solo fuentes públicas
   </footer>
@@ -575,6 +591,6 @@ html_parts.append(f"""
 # 13. GUARDAR
 # ============================================================
 with open("index.html", "w", encoding="utf-8") as f:
-    f.write("".join(html_parts))
+    f.write("".join(out))
 
 print(f"\n✅ index.html generado — {len(emisores_data)} emisores procesados.")
