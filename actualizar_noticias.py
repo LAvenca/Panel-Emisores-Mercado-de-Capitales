@@ -52,57 +52,107 @@ def leer_emisores_excel(ruta):
 # ============================================================
 # 2. SEMÁFORO DE RIESGO — edita aquí manualmente
 # ============================================================
-# Valores posibles: "rojo", "amarillo", "verde"
-# El nombre debe coincidir exactamente con el del Excel
 SEMAFORO = {
-    "RUTAS DE LIMA S.A.":                    "rojo",
-    "AUNA":                                  "amarillo",
-    "VOLCAN COMPAÑIA MINERA S.A.A.":         "rojo",
-    "ALICORP S.A.A.":                        "verde",
-    "CREDICORP LTD.":                        "verde",
-    "BANCO DE CREDITO DEL PERU":             "verde",
-    "INTERBANK":                             "verde",
-    "BBVA PERU":                             "verde",
-    "SCOTIABANK PERU S.A.A.":               "verde",
-    "MIBANCO":                               "verde",
-    "BANCO GNB PERU S.A.":                   "amarillo",
-    "FINANCIERA EFECTIVA S.A.":              "amarillo",
-    "CERRO VERDE":                           "verde",
-    "SOUTHERN PERU COPPER CORPORATION":      "verde",
-    "ACEROS AREQUIPA":                       "verde",
-    "INRETAIL PERU CORP.":                   "verde",
-    "ADMINISTRADORA JOCKEY PLAZA S.A.":      "amarillo",
-    # Agrega todos los emisores de tu Excel aquí
+    "RUTAS DE LIMA S.A.":                   "rojo",
+    "AUNA S.A.":                            "amarillo",
+    "VOLCAN COMPAÑIA MINERA S.A.A.":        "rojo",
+    "ALICORP S.A.A.":                       "verde",
+    "CREDICORP LTD.":                       "verde",
+    "BANCO DE CREDITO DEL PERU":            "verde",
+    "INTERBANK":                            "verde",
+    "BBVA PERU":                            "verde",
+    "SCOTIABANK PERU S.A.A.":              "verde",
+    "MIBANCO":                              "verde",
+    "BANCO GNB PERU S.A.":                  "amarillo",
+    "FINANCIERA EFECTIVA S.A.":             "amarillo",
+    "CERRO VERDE":                          "verde",
+    "SOUTHERN PERU COPPER CORPORATION":     "verde",
+    "ACEROS AREQUIPA":                      "verde",
+    "INRETAIL PERU CORP.":                  "verde",
+    "ADMINISTRADORA JOCKEY PLAZA S.A.":     "amarillo",
+    # Agrega todos tus emisores aquí
 }
 
 def get_semaforo(emisor):
-    """Busca el color del semáforo por nombre exacto o parcial."""
     nombre = limpiar_nombre(emisor).upper()
-    # Búsqueda exacta primero
     if nombre in SEMAFORO:
         return SEMAFORO[nombre]
-    # Búsqueda parcial: si la clave está contenida en el nombre
     for clave, color in SEMAFORO.items():
         if clave.upper() in nombre or nombre in clave.upper():
             return color
-    return None  # Sin semáforo asignado
+    return None
 
 def semaforo_html(color):
-    """Devuelve el HTML del badge del semáforo."""
     if not color:
         return ""
     cfg = {
-        "rojo":     ("🔴", "bg-red-500/20 border-red-500/50 text-red-300",    "Alto"),
-        "amarillo": ("🟡", "bg-yellow-500/20 border-yellow-500/50 text-yellow-300", "Moderado"),
-        "verde":    ("🟢", "bg-emerald-500/20 border-emerald-500/50 text-emerald-300", "Bajo"),
+        "rojo":     ("🔴", "bg-red-500/20 border-red-500/50 text-red-300",         "Riesgo Alto"),
+        "amarillo": ("🟡", "bg-yellow-500/20 border-yellow-500/50 text-yellow-300", "Riesgo Moderado"),
+        "verde":    ("🟢", "bg-emerald-500/20 border-emerald-500/50 text-emerald-300", "Riesgo Bajo"),
     }
     if color not in cfg:
         return ""
     icono, clases, label = cfg[color]
-    return f'<span class="text-[9px] border px-1.5 py-0.5 rounded font-bold {clases}">{icono} Riesgo {label}</span>'
+    return f'<span class="text-[9px] border px-1.5 py-0.5 rounded font-bold {clases}">{icono} {label}</span>'
 
 # ============================================================
-# 3. CONFIGURACIÓN GLOBAL
+# 3. PRIORIDAD DE EMISORES Y SCORING DE NOTICIAS
+# ============================================================
+EMISORES_PRIORITARIOS = [
+    "rutas de lima",
+    "auna",
+]
+
+SCORING_NOTICIAS = [
+    (5, [
+        'downgrade', 'upgrade', 'rebaja', 'mejora', 'calificacion', 'calificación',
+        'clasificacion', 'clasificación', 'rating', 'moody', 'fitch', 's&p',
+        'standard & poor', 'investment grade', 'grado de inversion', 'grado de inversión',
+        'watch negative', 'watch positive', 'creditwatch', 'outlook', 'perspectiva',
+        'bajo revision', 'bajo revisión', 'cambio de perspectiva', 'alza de nota',
+        'baja de nota', 'afirmacion', 'afirmación',
+    ]),
+    (4, [
+        'multa', 'sancion', 'sanción', 'demanda', 'denuncia', 'investigacion',
+        'investigación', 'fraude', 'corrupcion', 'corrupción', 'escandalo',
+        'escándalo', 'indecopi', 'sbs', 'smv', 'regulador', 'incumplimiento',
+        'default', 'quiebra', 'concurso de acreedores', 'riesgo reputacional',
+        'contingencia legal', 'proceso judicial',
+    ]),
+    (3, [
+        'bonos', 'deuda', 'emision', 'emisión', 'sindicado', 'prestamo', 'préstamo',
+        'credito', 'crédito', 'financiamiento', 'refinanciamiento', 'linea de credito',
+        'línea de crédito', 'aumento de capital', 'suscripcion', 'suscripción',
+        'colocacion', 'colocación', 'oferta publica', 'oferta pública', 'spread',
+        'tasa de interes', 'tasa de interés', 'cupón', 'cupon', 'vencimiento',
+    ]),
+    (2, [
+        'capex', 'inversion', 'inversión', 'proyecto', 'expansion', 'expansión',
+        'planta', 'infraestructura', 'contrato', 'concesion', 'concesión',
+        'adjudicacion', 'adjudicación', 'licitacion', 'licitación', 'obra',
+        'ampliacion', 'ampliación', 'construccion', 'construcción',
+    ]),
+    (1, [
+        'utilidad', 'utilidades', 'ganancia', 'perdida', 'pérdida', 'resultado',
+        'resultados', 'ebitda', 'ingresos', 'revenue', 'trimestre', 'semestre',
+        'anual', 'balance', 'flujo de caja', 'cash flow', 'margen', 'rentabilidad',
+        'dividendo', 'dividendos', 'acciones', 'bolsa', 'bvl',
+    ]),
+]
+
+def calcular_score(titulo):
+    titulo_lower = titulo.lower()
+    for score, keywords in SCORING_NOTICIAS:
+        if any(k in titulo_lower for k in keywords):
+            return score
+    return 0
+
+def es_emisor_prioritario(emisor):
+    nombre_lower = limpiar_nombre(emisor).lower()
+    return any(p in nombre_lower for p in EMISORES_PRIORITARIOS)
+
+# ============================================================
+# 4. CONFIGURACIÓN GLOBAL
 # ============================================================
 contexto = ssl._create_unverified_context()
 HEADERS = {
@@ -186,7 +236,7 @@ fecha_reporte = datetime.now().strftime("%d/%m/%Y %H:%M")
 cache_prioritarias = []
 
 # ============================================================
-# 4. UTILIDADES DE FECHA
+# 5. UTILIDADES DE FECHA
 # ============================================================
 def parsear_fecha(fecha_raw):
     formatos = [
@@ -230,7 +280,7 @@ def es_reciente(fecha_raw):
     return dt >= LIMITE_FECHA
 
 # ============================================================
-# 5. UTILIDADES DE NOMBRE
+# 6. UTILIDADES DE NOMBRE
 # ============================================================
 def limpiar_nombre(emisor):
     nombre = html_mod.unescape(emisor)
@@ -304,7 +354,7 @@ def usa_alias(emisor):
     return bool(nombres) and nombres[0] in ALIAS_EMISORES.values()
 
 # ============================================================
-# 6. FUENTES PRIORITARIAS: BVL Y SMV
+# 7. FUENTES PRIORITARIAS: BVL Y SMV
 # ============================================================
 FUENTES_PRIORITARIAS = [
     {
@@ -368,7 +418,7 @@ def cargar_fuentes_prioritarias():
             print(f"    ✗ {fuente['nombre']} no disponible: {e}")
 
 # ============================================================
-# 7. BUSCAR EN CACHE BVL/SMV
+# 8. BUSCAR EN CACHE BVL/SMV
 # ============================================================
 def buscar_en_cache_prioritarias(emisor):
     tokens  = tokens_significativos(emisor)
@@ -401,7 +451,7 @@ def buscar_en_cache_prioritarias(emisor):
     return resultados
 
 # ============================================================
-# 8. BLOOMBERG LÍNEA
+# 9. BLOOMBERG LÍNEA
 # ============================================================
 def buscar_bloomberg_linea(emisor):
     resultados = []
@@ -449,7 +499,7 @@ def buscar_bloomberg_linea(emisor):
     return resultados
 
 # ============================================================
-# 9. GOOGLE NEWS
+# 10. GOOGLE NEWS
 # ============================================================
 def buscar_google_news(emisor):
     resultados = []
@@ -526,7 +576,7 @@ def buscar_google_news(emisor):
     return resultados[:6]
 
 # ============================================================
-# 10. CONSOLIDAR NOTICIAS
+# 11. CONSOLIDAR Y ORDENAR NOTICIAS
 # ============================================================
 def obtener_noticias(emisor):
     todas = (
@@ -540,15 +590,16 @@ def obtener_noticias(emisor):
         key = n["titulo"][:60].lower().strip()
         if key not in vistos:
             vistos.add(key)
+            n["score"] = calcular_score(n["titulo"])
             resultado.append(n)
         if len(resultado) >= 6:
             break
 
-    resultado.sort(key=lambda x: (0 if x["alerta"] else 1))
+    resultado.sort(key=lambda x: -(5 if x.get("alerta") else x.get("score", 0)))
     return resultado[:6]
 
 # ============================================================
-# 11. HELPERS HTML
+# 12. HELPERS HTML
 # ============================================================
 ORDEN_SEG = ["Renta Fija", "Renta Variable", "Fondos", "Alternativos"]
 COLOR_SEG = {
@@ -573,7 +624,7 @@ def dot_color(n):
     return "bg-gray-500"
 
 # ============================================================
-# 12. EJECUCIÓN PRINCIPAL
+# 13. EJECUCIÓN PRINCIPAL
 # ============================================================
 cargar_fuentes_prioritarias()
 emisores_data = leer_emisores_excel("Emisores.xlsx")
@@ -583,10 +634,11 @@ if not emisores_data:
 else:
     print(f"\n📋 {len(emisores_data)} emisores cargados desde Excel:")
     for e, s in emisores_data.items():
-        v = variantes_emisor(e)
+        v     = variantes_emisor(e)
         color = get_semaforo(e)
-        semaforo_str = f" [{color.upper()}]" if color else " [sin semáforo]"
-        print(f"   {limpiar_nombre(e):50s} → {v[0]}{semaforo_str}")
+        sem   = f"[{color.upper()}]" if color else "[sin semáforo]"
+        prior = "⭐ PRIORITARIO" if es_emisor_prioritario(e) else ""
+        print(f"   {limpiar_nombre(e):50s} → {v[0]:30s} {sem} {prior}")
 
 segmentos = {}
 for emisor, seg in emisores_data.items():
@@ -598,7 +650,7 @@ segs_ordenados = sorted(
 )
 
 # ============================================================
-# 13. PRE-CALCULAR NOTICIAS
+# 14. PRE-CALCULAR NOTICIAS Y ORDENAR EMISORES
 # ============================================================
 print("\n🔍 Buscando noticias...")
 resultados_por_segmento = {}
@@ -616,13 +668,23 @@ for seg in segs_ordenados:
         else:
             print(f"     ↳ sin noticias, omitido")
 
+    # Ordenar emisores dentro del segmento
+    def sort_key_emisor(item):
+        emisor, noticias = item
+        es_prior     = 0 if es_emisor_prioritario(emisor) else 1
+        tiene_alerta = 0 if any(n.get("alerta") for n in noticias) else 1
+        mejor_score  = -max((n.get("score", 0) for n in noticias), default=0)
+        return (es_prior, tiene_alerta, mejor_score)
+
+    emisores_con_noticias.sort(key=sort_key_emisor)
+
     if emisores_con_noticias:
         resultados_por_segmento[seg] = emisores_con_noticias
     else:
-        print(f"  ⚠ Segmento '{seg}' sin noticias, omitido del HTML")
+        print(f"  ⚠ Segmento '{seg}' sin noticias, omitido")
 
 # ============================================================
-# 14. CONSTRUCCIÓN HTML
+# 15. CONSTRUCCIÓN HTML
 # ============================================================
 out = []
 out.append(f"""<!DOCTYPE html>
@@ -648,7 +710,6 @@ out.append(f"""<!DOCTYPE html>
     <div class="text-xs text-gray-500 font-mono">Actualizado: {fecha_reporte}</div>
   </header>
 
-  <!-- LEYENDA -->
   <div class="flex flex-wrap gap-3 mb-8 text-xs">
     <span class="flex items-center gap-1.5 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg">
       <span class="w-2 h-2 rounded-full bg-red-500"></span> Alerta crediticia
@@ -666,7 +727,7 @@ out.append(f"""<!DOCTYPE html>
       <span class="w-2 h-2 rounded-full bg-gray-500"></span> Prensa general
     </span>
     <span class="flex items-center gap-1.5 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg">
-      🔴 Riesgo Alto &nbsp; 🟡 Riesgo Moderado &nbsp; 🟢 Riesgo Bajo
+      🔴 Riesgo Alto &nbsp;·&nbsp; 🟡 Riesgo Moderado &nbsp;·&nbsp; 🟢 Riesgo Bajo
     </span>
   </div>
 """)
@@ -695,8 +756,8 @@ else:
             tiene_alerta   = any(n["alerta"] for n in noticias)
             color_riesgo   = get_semaforo(emisor)
             badge_riesgo   = semaforo_html(color_riesgo)
+            es_prior       = es_emisor_prioritario(emisor)
 
-            # Borde de tarjeta: rojo si alerta crediticia, naranja si riesgo alto, amarillo si moderado
             if tiene_alerta:
                 cb = "border-red-500/50 shadow-red-950/30 shadow-lg"
                 bg = "bg-gradient-to-b from-gray-900 to-red-950/15"
@@ -710,6 +771,8 @@ else:
                 cb = "border-gray-800"
                 bg = "bg-gray-900"
 
+            pin_badge = '<span class="text-[9px] bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 px-1.5 py-0.5 rounded font-bold">📌 Prioritario</span>' if es_prior else ""
+
             out.append(f"""
       <div class="rounded-xl border p-5 flex flex-col gap-3 {cb} {bg}">
         <div class="flex justify-between items-start border-b border-gray-800/70 pb-2.5 gap-2">
@@ -721,6 +784,7 @@ else:
               {html.escape(seg)}
             </span>
             {badge_riesgo}
+            {pin_badge}
             {'<span class="text-[9px] bg-red-500/20 border border-red-500/30 text-red-400 px-2 py-0.5 rounded font-bold animate-pulse">⚠ Rating Alert</span>' if tiene_alerta else ""}
           </div>
         </div>
@@ -775,7 +839,7 @@ out.append(f"""
 """)
 
 # ============================================================
-# 15. GUARDAR
+# 16. GUARDAR
 # ============================================================
 with open("index.html", "w", encoding="utf-8") as f:
     f.write("".join(out))
