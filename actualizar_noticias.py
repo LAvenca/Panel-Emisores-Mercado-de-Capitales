@@ -67,6 +67,7 @@ SEMAFORO = {
     "ACEROS AREQUIPA":                      "verde",
     "INRETAIL PERU CORP.":                  "verde",
     "ADMINISTRADORA JOCKEY PLAZA S.A.":     "amarillo",
+    "BANCO DE LA NACION":                   "verde",
 }
 
 def get_semaforo(emisor):
@@ -202,14 +203,26 @@ TEMAS_FINANCIEROS_SOBERANOS = [
     'impuesto', 'tributario', 'recaudacion', 'recaudación', 'balanza',
 ]
 
+# Blacklist ampliada — todo lo que no tiene que ver con finanzas corporativas
 TEMAS_BLACKLIST = [
     'narcotrafico', 'narcotráfico', 'droga', 'drogas', 'cocaina', 'cocaína',
     'crimen', 'sicario', 'homicidio', 'asesinato', 'feminicidio',
     'terremoto', 'sismo', 'huaico', 'inundacion', 'inundación',
-    'futbol', 'fútbol', 'deporte', 'partido', 'elecciones', 'candidato',
-    'keiko', 'fujimori', 'castillo', 'boluarte', 'congreso', 'vacancia',
+    'futbol', 'fútbol', 'deporte', 'partido', 'concierto', 'festival',
+    'musica', 'música', 'cantante', 'artista', 'actor', 'actriz',
     'farandula', 'farándula', 'espectaculo', 'espectáculo', 'television',
-    'accidente', 'incendio', 'rescate',
+    'accidente', 'incendio', 'rescate', 'messi', 'neymar', 'ronaldo',
+    'deportistas', 'multimillonario', 'celebridad', 'celebrity',
+    'elecciones', 'candidato', 'keiko', 'fujimori', 'castillo', 'boluarte',
+    'congreso', 'vacancia', 'presidente de la republica',
+    'violencia', 'delincuencia', 'robos', 'extorsion', 'extorsión',
+    # Países que no son relevantes para emisores peruanos específicos
+]
+
+# Países para detectar noticias de entidades homónimas extranjeras
+PAISES_EXTRANJEROS = [
+    'argentina', 'colombi', 'bogota', 'bogotá', 'chile', 'mexico', 'brasil',
+    'venezuela', 'ecuador', 'bolivia', 'uruguay', 'paraguay'
 ]
 
 ALIAS_EMISORES = {
@@ -230,7 +243,7 @@ ALIAS_EMISORES = {
     "volcan":              "Volcan",
     "alicorp":             "Alicorp",
     "aceros arequipa":     "Aceros Arequipa",
-    "banco de la nacion":  "Banco de la Nación",
+    "banco de la nacion":  "Banco de la Nación Perú",
     "banco gnb":           "Banco GNB",
     "mibanco":             "Mibanco",
     "financiera efectiva": "Financiera Efectiva",
@@ -338,7 +351,7 @@ def titulo_relevante_para_emisor(titulo, emisor):
     if not titulo_es_relevante_financiero(titulo):
         return False
 
-    # Para "Auna": word boundary
+    # Para "Auna": word boundary estricto
     if 'auna' in nombre_lower and len(nombre_lower) < 10:
         return bool(re.search(r'\bauna\b', titulo_lower))
 
@@ -351,6 +364,25 @@ def titulo_relevante_para_emisor(titulo, emisor):
     # Para emisores soberanos: exigir contenido financiero
     if es_emisor_soberano(emisor):
         return any(t in titulo_lower for t in TEMAS_FINANCIEROS_SOBERANOS)
+
+    # Para "Banco de la Nacion": excluir noticias de Argentina u otros países
+    if 'banco de la nacion' in nombre_lower or 'banco de la nación' in nombre_lower:
+        for pais in PAISES_EXTRANJEROS:
+            if pais in titulo_lower:
+                return False
+        return True
+
+    # Para cualquier banco peruano: excluir si menciona otro país explícitamente
+    # en el contexto de OTRO banco (ej: Credicorp Colombia, BCP Argentina)
+    tokens = tokens_significativos(emisor)
+    if tokens:
+        # Si el título menciona el emisor + un país extranjero como sujeto diferente, descartar
+        for pais in ['argentina', 'colombi', 'bogota', 'bogotá']:
+            if pais in titulo_lower:
+                # Solo descartar si NO menciona "peru" o el emisor claramente
+                termino_principal = variantes_emisor(emisor)[0].lower() if variantes_emisor(emisor) else ""
+                if termino_principal not in titulo_lower:
+                    return False
 
     return True
 
@@ -369,7 +401,6 @@ def variantes_emisor(emisor):
     variantes = []
     emisor_lower = emisor_clean.lower()
 
-    # Alias: priorizar match más largo
     mejor_alias = None
     mejor_len   = 0
     for clave, alias in ALIAS_EMISORES.items():
@@ -585,7 +616,7 @@ def buscar_google_news(emisor):
     return resultados[:6]
 
 # ============================================================
-# 11. CONSOLIDAR Y ORDENAR NOTICIAS (mínimo 4)
+# 11. CONSOLIDAR Y ORDENAR NOTICIAS (exactamente 4, máximo 6)
 # ============================================================
 def obtener_noticias(emisor):
     todas = (
@@ -603,40 +634,64 @@ def obtener_noticias(emisor):
             resultado.append(n)
         if len(resultado) >= 6: break
 
+    # Ordenar por score descendente (mayor riesgo primero)
     resultado.sort(key=lambda x: -(5 if x.get("alerta") else x.get("score", 0)))
 
-    # Fallback: si hay menos de 4, ampliar a último mes con búsqueda financiera
+    # Fallback para llegar a mínimo 4: ampliar a último mes,
+    # solo temas financieros, aplicando blacklist estricta
     if len(resultado) < 4:
         nombres = variantes_emisor(emisor)
         termino = nombres[0] if nombres else limpiar_nombre(emisor)
-        termino_busqueda = f'{termino} finanzas economia deuda bonos'
-        try:
-            url = f"https://news.google.com/rss/search?q={urllib.parse.quote(termino_busqueda)}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:m,sbd:1"
-            req = urllib.request.Request(url, headers=HEADERS)
-            with urllib.request.urlopen(req, context=contexto, timeout=10) as res:
-                data = res.read().decode('utf-8', errors='ignore')
-            titulos_vistos = {n["titulo"] for n in resultado}
-            for item in re.findall(r'<item>([\s\S]*?)</item>', data)[:10]:
-                if len(resultado) >= 4: break
-                t = re.search(r'<title><!\[CDATA\[(.*?)\]\]></title>|<title>(.*?)</title>', item)
-                l = re.search(r'<link>(.*?)</link>', item)
-                d = re.search(r'<pubDate>(.*?)</pubDate>', item)
-                s = re.search(r'<source[^>]*>(.*?)</source>', item)
-                titulo = (t.group(1) or t.group(2) or "").strip() if t else ""
-                link   = l.group(1).strip() if l else "#"
-                fecha  = d.group(1).strip() if d else ""
-                fuente = (s.group(1) or "Prensa").strip() if s else "Prensa"
-                if not titulo or titulo in titulos_vistos: continue
-                if not titulo_es_relevante_financiero(titulo): continue
-                titulos_vistos.add(titulo)
-                es_alerta = bool(re.search('|'.join(PALABRAS_CREDITICIAS), titulo, re.IGNORECASE))
-                resultado.append({
-                    "titulo": titulo, "fuente": fuente,
-                    "link": link, "fecha": formatear_fecha(fecha),
-                    "alerta": es_alerta, "score": calcular_score(titulo)
-                })
-        except Exception:
-            pass
+        fallback_queries = [
+            f'{termino} finanzas economia deuda bonos resultados',
+            f'{termino} Peru financiero crediticio',
+        ]
+        titulos_vistos = {n["titulo"] for n in resultado}
+        for fq in fallback_queries:
+            if len(resultado) >= 4: break
+            try:
+                url = f"https://news.google.com/rss/search?q={urllib.parse.quote(fq)}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:m,sbd:1"
+                req = urllib.request.Request(url, headers=HEADERS)
+                with urllib.request.urlopen(req, context=contexto, timeout=10) as res:
+                    data = res.read().decode('utf-8', errors='ignore')
+                for item in re.findall(r'<item>([\s\S]*?)</item>', data)[:10]:
+                    if len(resultado) >= 4: break
+                    t = re.search(r'<title><!\[CDATA\[(.*?)\]\]></title>|<title>(.*?)</title>', item)
+                    l = re.search(r'<link>(.*?)</link>', item)
+                    d = re.search(r'<pubDate>(.*?)</pubDate>', item)
+                    s = re.search(r'<source[^>]*>(.*?)</source>', item)
+                    titulo = (t.group(1) or t.group(2) or "").strip() if t else ""
+                    link   = l.group(1).strip() if l else "#"
+                    fecha  = d.group(1).strip() if d else ""
+                    fuente = (s.group(1) or "Prensa").strip() if s else "Prensa"
+                    if not titulo or titulo in titulos_vistos: continue
+                    # Blacklist estricta en fallback — sin excepciones
+                    if not titulo_es_relevante_financiero(titulo): continue
+                    if not titulo_relevante_para_emisor(titulo, emisor): continue
+                    # Exigir que el título tenga al menos una palabra financiera
+                    titulo_lower = titulo.lower()
+                    tiene_contenido_fin = any(
+                        kw in titulo_lower for kw in [
+                            'financier', 'econom', 'banco', 'credito', 'crédito',
+                            'inversion', 'inversión', 'deuda', 'bonos', 'resultado',
+                            'utilidad', 'ganancia', 'perdida', 'pérdida', 'ebitda',
+                            'trimestre', 'semestre', 'rating', 'calificacion',
+                            'moody', 'fitch', 'bolsa', 'accion', 'acción',
+                        ]
+                    )
+                    if not tiene_contenido_fin: continue
+                    titulos_vistos.add(titulo)
+                    es_alerta = bool(re.search('|'.join(PALABRAS_CREDITICIAS), titulo, re.IGNORECASE))
+                    resultado.append({
+                        "titulo": titulo, "fuente": fuente,
+                        "link": link, "fecha": formatear_fecha(fecha),
+                        "alerta": es_alerta, "score": calcular_score(titulo)
+                    })
+            except Exception:
+                pass
+
+        # Re-ordenar después del fallback
+        resultado.sort(key=lambda x: -(5 if x.get("alerta") else x.get("score", 0)))
 
     return resultado[:6]
 
@@ -665,10 +720,13 @@ def badge_fuente(fuente):
     return "bg-gray-800 text-gray-400 border-gray-700"
 
 def dot_color(n):
-    if n["alerta"]:                        return "bg-red-500"
+    score = n.get("score", 0)
+    if n.get("alerta") or score == 5: return "bg-red-500"
+    if score == 4:                     return "bg-orange-500"
+    if score == 3:                     return "bg-yellow-500"
     if "bvl"       in n["fuente"].lower(): return "bg-blue-500"
     if "smv"       in n["fuente"].lower(): return "bg-indigo-500"
-    if "bloomberg" in n["fuente"].lower(): return "bg-orange-500"
+    if "bloomberg" in n["fuente"].lower(): return "bg-orange-400"
     return "bg-gray-500"
 
 def render_cards(emisores_con_noticias, seg):
@@ -700,8 +758,8 @@ def render_cards(emisores_con_noticias, seg):
         noticias_html = []
         for n in noticias:
             dc  = dot_color(n)
-            ibg = "bg-red-950/30 border-red-500/40" if n["alerta"] else "bg-gray-800/40 border-gray-700/40"
-            itx = "text-red-200" if n["alerta"] else "text-gray-300"
+            ibg = "bg-red-950/30 border-red-500/40" if n.get("alerta") else "bg-gray-800/40 border-gray-700/40"
+            itx = "text-red-200" if n.get("alerta") else "text-gray-300"
             fb  = badge_fuente(n["fuente"])
             noticias_html.append(f"""
               <div class="border rounded-lg p-2.5 {ibg}">
