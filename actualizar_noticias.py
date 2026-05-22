@@ -78,9 +78,55 @@ TOKENS_GENERICOS = {
     'inversiones', 'holding', 'capital', 'asset', 'trust'
 }
 
-LIMITE_FECHA  = datetime.now() - timedelta(days=30)
-fecha_reporte = datetime.now().strftime("%d/%m/%Y %H:%M")
+PREFIJOS_IGNORAR = {
+    'administradora', 'administrador', 'compania', 'compañia',
+    'empresa', 'grupo', 'corporacion', 'corporación', 'sociedad'
+}
 
+# Solo se activa si la clave aparece en el nombre del emisor del Excel
+ALIAS_EMISORES = {
+    "jockey plaza":        "Jockey Plaza",
+    "real plaza":          "Real Plaza",
+    "open plaza":          "Open Plaza",
+    "mall aventura":       "Mall Aventura",
+    "saga falabella":      "Falabella",
+    "tiendas peruanas":    "Oechsle",
+    "inretail":            "InRetail",
+    "intercorp":           "Intercorp",
+    "credicorp":           "Credicorp",
+    "prima afp":           "Prima AFP",
+    "habitat afp":         "AFP Habitat",
+    "profuturo":           "Profuturo",
+    "cerro verde":         "Cerro Verde",
+    "southern peru":       "Southern Peru",
+    "volcan":              "Volcan",
+    "alicorp":             "Alicorp",
+    "aceros arequipa":     "Aceros Arequipa",
+    "banco de la nacion":  "Banco de la Nación",
+    "banco gnb":           "Banco GNB",
+    "mibanco":             "Mibanco",
+    "financiera efectiva": "Financiera Efectiva",
+    "bbva":                "BBVA Peru",
+    "scotiabank":          "Scotiabank Peru",
+    "bcp":                 "BCP",
+    "interbank":           "Interbank",
+    "brown brothers":      "Brown Brothers Harriman",
+    "fibra prime":         "Fibra Prime",
+    "fossal":              "Fossal",
+    "laive":               "Laive",
+    "cementos pacasmayo":  "Cementos Pacasmayo",
+    "ferreyros":           "Ferreyros",
+    "luz del sur":         "Luz del Sur",
+    "enel":                "Enel Peru",
+    "edelnor":             "Enel Peru",
+    "telefonica":          "Telefónica del Perú",
+    "entel":               "Entel Peru",
+    "lima airport":        "LAP",
+    "lap":                 "LAP",
+}
+
+LIMITE_FECHA  = datetime.now() - timedelta(days=7)
+fecha_reporte = datetime.now().strftime("%d/%m/%Y %H:%M")
 cache_prioritarias = []
 
 # ============================================================
@@ -100,7 +146,9 @@ def parsear_fecha(fecha_raw):
     m = re.search(r'(\d{1,2})\s+(\w{3})\s+(\d{4})', fecha_raw)
     if m:
         try:
-            return datetime.strptime(f"{m.group(1)} {m.group(2)} {m.group(3)}", "%d %b %Y")
+            return datetime.strptime(
+                f"{m.group(1)} {m.group(2)} {m.group(3)}", "%d %b %Y"
+            )
         except Exception:
             pass
     return None
@@ -130,42 +178,60 @@ def es_reciente(fecha_raw):
 # ============================================================
 def limpiar_nombre(emisor):
     nombre = html_mod.unescape(emisor)
-    nombre = re.sub(r'\s+', ' ', nombre).strip()
-    return nombre
+    return re.sub(r'\s+', ' ', nombre).strip()
 
 def variantes_emisor(emisor):
-    emisor = limpiar_nombre(emisor)
-    sufijos = (r'\b(S\.A\.A\.|S\.A\.C\.|S\.A\.|S\.A|SAA|SAC|S\.A\.B\.|S\.A\.B|'
-               r'Corp\.?|Ltd\.?|Inc\.?|Co\.?|Perú|Peru|del Perú|de Peru)\b')
-    limpio = re.sub(sufijos, '', emisor, flags=re.IGNORECASE).strip().strip('.,&')
+    emisor_clean = limpiar_nombre(emisor)
+    sufijos = (
+        r'\b(S\.A\.A\.|S\.A\.C\.|S\.A\.|S\.A|SAA|SAC|S\.A\.B\.|S\.A\.B|'
+        r'Corp\.?|Ltd\.?|Inc\.?|Co\.?|Perú|Peru|del Perú|de Peru|'
+        r'Shopping Center|Centro Comercial|Administradora|Administrador)\b'
+    )
+    limpio = re.sub(sufijos, '', emisor_clean, flags=re.IGNORECASE).strip().strip('.,&')
     limpio = re.sub(r'\s+', ' ', limpio).strip()
 
     variantes = []
-    if limpio:
+
+    # Alias: solo se activa si la clave está contenida en el nombre real del Excel
+    emisor_lower = emisor_clean.lower()
+    for clave, alias in ALIAS_EMISORES.items():
+        if clave.strip() in emisor_lower:
+            variantes.append(alias)
+            break  # un solo alias por emisor
+
+    # Nombre limpio completo
+    if limpio and limpio not in variantes:
         variantes.append(limpio)
-    palabras = limpio.split()
+
+    # Dos primeras palabras significativas
+    palabras = [p for p in limpio.split() if p.lower() not in PREFIJOS_IGNORAR]
     if len(palabras) >= 2:
         dos = f"{palabras[0]} {palabras[1]}"
         if dos not in variantes:
             variantes.append(dos)
-    primera = palabras[0] if palabras else emisor.split()[0]
-    if primera not in variantes and len(primera) > 3:
-        variantes.append(primera)
+
+    # Primera palabra significativa como fallback
+    if palabras:
+        primera = palabras[0]
+        if primera not in variantes and len(primera) > 3:
+            variantes.append(primera)
 
     return variantes
 
 def tokens_significativos(emisor):
-    emisor = limpiar_nombre(emisor)
-    sufijos = (r'\b(S\.A\.A\.|S\.A\.C\.|S\.A\.|S\.A|SAA|SAC|S\.A\.B\.|'
-               r'Corp\.?|Ltd\.?|Inc\.?|Co\.?|Perú|Peru)\b')
-    limpio = re.sub(sufijos, '', emisor, flags=re.IGNORECASE)
-    tokens = [
+    emisor_clean = limpiar_nombre(emisor)
+    sufijos = (
+        r'\b(S\.A\.A\.|S\.A\.C\.|S\.A\.|S\.A|SAA|SAC|S\.A\.B\.|'
+        r'Corp\.?|Ltd\.?|Inc\.?|Co\.?|Perú|Peru|'
+        r'Shopping Center|Centro Comercial|Administradora)\b'
+    )
+    limpio = re.sub(sufijos, '', emisor_clean, flags=re.IGNORECASE)
+    return [
         w.lower().strip('.,&')
         for w in limpio.split()
         if w.lower().strip('.,&') not in PALABRAS_IGNORAR
         and len(w.strip('.,&')) > 2
     ]
-    return tokens
 
 def calcular_minimo(tokens):
     if not tokens:
@@ -177,6 +243,10 @@ def calcular_minimo(tokens):
     if len(tokens) <= 2:
         return 1
     return 2
+
+def usa_alias(emisor):
+    nombres = variantes_emisor(emisor)
+    return bool(nombres) and nombres[0] in ALIAS_EMISORES.values()
 
 # ============================================================
 # 5. FUENTES PRIORITARIAS: BVL Y SMV
@@ -203,7 +273,6 @@ def cargar_fuentes_prioritarias():
             raw = re.sub(r'<script[\s\S]*?</script>', '', raw, flags=re.IGNORECASE)
             raw = re.sub(r'<style[\s\S]*?</style>',   '', raw, flags=re.IGNORECASE)
 
-            # Links con texto
             links = re.findall(
                 r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>([\s\S]*?)</a>',
                 raw, re.IGNORECASE
@@ -225,7 +294,6 @@ def cargar_fuentes_prioritarias():
                                              texto_limpio, re.IGNORECASE))
                 })
 
-            # Líneas de texto puro (útil para tablas SMV)
             for linea in raw.split('\n'):
                 linea = re.sub(r'<[^>]+>', ' ', linea)
                 linea = re.sub(r'\s+', ' ', linea).strip()
@@ -252,18 +320,24 @@ def buscar_en_cache_prioritarias(emisor):
     nombres = variantes_emisor(emisor)
     termino_principal = nombres[0].lower() if nombres else limpiar_nombre(emisor).lower()
     minimo  = calcular_minimo(tokens)
+    alias   = usa_alias(emisor)
 
     resultados = []
     vistos = set()
 
     for entrada in cache_prioritarias:
         titulo_lower = entrada["titulo"].lower()
-        matches = sum(1 for t in tokens if t in titulo_lower)
-        if matches < minimo:
-            continue
-        if len(termino_principal) > 5 and termino_principal not in titulo_lower:
-            if matches < 2:
+        if alias:
+            if termino_principal not in titulo_lower:
                 continue
+        else:
+            matches = sum(1 for t in tokens if t in titulo_lower)
+            if matches < minimo:
+                continue
+            if len(termino_principal) > 5 and termino_principal not in titulo_lower:
+                if matches < 2:
+                    continue
+
         key = entrada["titulo"][:60]
         if key not in vistos:
             vistos.add(key)
@@ -280,11 +354,12 @@ def buscar_bloomberg_linea(emisor):
     termino = nombres[0] if nombres else limpiar_nombre(emisor)
     tokens  = tokens_significativos(emisor)
     minimo  = calcular_minimo(tokens)
+    alias   = usa_alias(emisor)
 
     try:
         q   = urllib.parse.quote(f'{termino} site:bloomberglinea.com')
         url = (f"https://news.google.com/rss/search?"
-               f"q={q}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:m,sbd:1")
+               f"q={q}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:w,sbd:1")
         req = urllib.request.Request(url, headers=HEADERS)
         with urllib.request.urlopen(req, context=contexto, timeout=10) as res:
             data = res.read().decode('utf-8', errors='ignore')
@@ -300,9 +375,10 @@ def buscar_bloomberg_linea(emisor):
 
             if not titulo or not es_reciente(fecha):
                 continue
-            matches = sum(1 for tk in tokens if tk in titulo.lower())
-            if matches < minimo:
-                continue
+            if not alias:
+                matches = sum(1 for tk in tokens if tk in titulo.lower())
+                if matches < minimo:
+                    continue
 
             resultados.append({
                 "titulo": titulo,
@@ -322,68 +398,74 @@ def buscar_bloomberg_linea(emisor):
 # ============================================================
 def buscar_google_news(emisor):
     resultados = []
-    vistos  = set()
-    nombres = variantes_emisor(emisor)
-    termino = nombres[0] if nombres else limpiar_nombre(emisor)
-    tokens  = tokens_significativos(emisor)
-    minimo  = calcular_minimo(tokens)
+    vistos    = set()
+    nombres   = variantes_emisor(emisor)
+    tokens    = tokens_significativos(emisor)
+    minimo    = calcular_minimo(tokens)
+    con_alias = usa_alias(emisor)
 
-    queries = [
-        (
-            f'{termino} (downgrade OR upgrade OR outlook OR rating OR Moody OR Fitch OR "S&P" '
-            f'OR perspectiva OR calificacion OR bonos OR deuda OR sindicado)',
-            True
-        ),
-        (
-            f'{termino} (finanzas OR resultados OR bolsa OR BVL OR SMV OR inversión OR accion OR utilidad)',
-            False
-        ),
-        (termino, False),
-    ]
-
-    for query, es_credit in queries:
-        try:
-            url = (f"https://news.google.com/rss/search?"
-                   f"q={urllib.parse.quote(query)}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:m,sbd:1")
-            req = urllib.request.Request(url, headers=HEADERS)
-            with urllib.request.urlopen(req, context=contexto, timeout=10) as res:
-                data = res.read().decode('utf-8', errors='ignore')
-
-            for item in re.findall(r'<item>([\s\S]*?)</item>', data)[:6]:
-                t = re.search(r'<title><!\[CDATA\[(.*?)\]\]></title>|<title>(.*?)</title>', item)
-                l = re.search(r'<link>(.*?)</link>', item)
-                d = re.search(r'<pubDate>(.*?)</pubDate>', item)
-                s = re.search(r'<source[^>]*>(.*?)</source>', item)
-
-                titulo = (t.group(1) or t.group(2) or "").strip() if t else ""
-                link   = l.group(1).strip() if l else "#"
-                fecha  = d.group(1).strip() if d else ""
-                fuente = (s.group(1) or "Prensa").strip() if s else "Prensa"
-
-                if not titulo or titulo in vistos:
-                    continue
-                if not es_reciente(fecha):
-                    continue
-                matches = sum(1 for tk in tokens if tk in titulo.lower())
-                if matches < minimo:
-                    continue
-
-                vistos.add(titulo)
-                es_alerta = bool(re.search('|'.join(PALABRAS_CREDITICIAS),
-                                            titulo, re.IGNORECASE))
-                resultados.append({
-                    "titulo": titulo,
-                    "fuente": fuente,
-                    "link":   link,
-                    "fecha":  formatear_fecha(fecha),
-                    "alerta": es_alerta or es_credit
-                })
-
-        except Exception:
-            pass
-
+    for termino in nombres:
         if len(resultados) >= 6:
             break
+
+        queries = [
+            (
+                f'{termino} (downgrade OR upgrade OR outlook OR rating OR Moody OR Fitch OR "S&P" '
+                f'OR perspectiva OR calificacion OR bonos OR deuda OR sindicado)',
+                True
+            ),
+            (
+                f'{termino} (finanzas OR resultados OR bolsa OR BVL OR SMV '
+                f'OR inversión OR accion OR utilidad)',
+                False
+            ),
+            (termino, False),
+        ]
+
+        for query, es_credit in queries:
+            if len(resultados) >= 6:
+                break
+            try:
+                url = (f"https://news.google.com/rss/search?"
+                       f"q={urllib.parse.quote(query)}"
+                       f"&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:w,sbd:1")
+                req = urllib.request.Request(url, headers=HEADERS)
+                with urllib.request.urlopen(req, context=contexto, timeout=10) as res:
+                    data = res.read().decode('utf-8', errors='ignore')
+
+                for item in re.findall(r'<item>([\s\S]*?)</item>', data)[:6]:
+                    t = re.search(r'<title><!\[CDATA\[(.*?)\]\]></title>|<title>(.*?)</title>', item)
+                    l = re.search(r'<link>(.*?)</link>', item)
+                    d = re.search(r'<pubDate>(.*?)</pubDate>', item)
+                    s = re.search(r'<source[^>]*>(.*?)</source>', item)
+
+                    titulo = (t.group(1) or t.group(2) or "").strip() if t else ""
+                    link   = l.group(1).strip() if l else "#"
+                    fecha  = d.group(1).strip() if d else ""
+                    fuente = (s.group(1) or "Prensa").strip() if s else "Prensa"
+
+                    if not titulo or titulo in vistos:
+                        continue
+                    if not es_reciente(fecha):
+                        continue
+                    if not con_alias:
+                        matches = sum(1 for tk in tokens if tk in titulo.lower())
+                        if matches < minimo:
+                            continue
+
+                    vistos.add(titulo)
+                    es_alerta = bool(re.search('|'.join(PALABRAS_CREDITICIAS),
+                                                titulo, re.IGNORECASE))
+                    resultados.append({
+                        "titulo": titulo,
+                        "fuente": fuente,
+                        "link":   link,
+                        "fecha":  formatear_fecha(fecha),
+                        "alerta": es_alerta or es_credit
+                    })
+
+            except Exception:
+                pass
 
     resultados.sort(key=lambda x: (0 if x["alerta"] else 1))
     return resultados[:6]
@@ -429,10 +511,10 @@ def badge_fuente(fuente):
     return "bg-gray-800 text-gray-400 border-gray-700"
 
 def dot_color(n):
-    if n["alerta"]:                          return "bg-red-500"
-    if "bvl"       in n["fuente"].lower():   return "bg-blue-500"
-    if "smv"       in n["fuente"].lower():   return "bg-indigo-500"
-    if "bloomberg" in n["fuente"].lower():   return "bg-orange-500"
+    if n["alerta"]:                        return "bg-red-500"
+    if "bvl"       in n["fuente"].lower(): return "bg-blue-500"
+    if "smv"       in n["fuente"].lower(): return "bg-indigo-500"
+    if "bloomberg" in n["fuente"].lower(): return "bg-orange-500"
     return "bg-gray-500"
 
 # ============================================================
@@ -443,6 +525,11 @@ emisores_data = leer_emisores_excel("Emisores.xlsx")
 
 if not emisores_data:
     print("ADVERTENCIA: No se leyeron emisores. Verifica Emisores.xlsx")
+else:
+    print(f"\n📋 {len(emisores_data)} emisores cargados desde Excel:")
+    for e, s in emisores_data.items():
+        v = variantes_emisor(e)
+        print(f"   {limpiar_nombre(e):45s} → buscando como: {v[0]}")
 
 segmentos = {}
 for emisor, seg in emisores_data.items():
@@ -474,7 +561,7 @@ out.append(f"""<!DOCTYPE html>
         Monitor Crediticio del Portafolio
       </h1>
       <p class="text-gray-400 text-sm mt-1">
-        Fuentes: BVL · SMV · Bloomberg Línea · Google News &nbsp;·&nbsp; Último mes
+        Fuentes: BVL · SMV · Bloomberg Línea · Google News &nbsp;·&nbsp; Última semana
       </p>
     </div>
     <div class="text-xs text-gray-500 font-mono">Actualizado: {fecha_reporte}</div>
@@ -512,7 +599,8 @@ for seg in segs_ordenados:
 
     for emisor in segmentos[seg]:
         nombre_display = limpiar_nombre(emisor)
-        print(f"  ▶ {nombre_display} ({seg})")
+        variantes      = variantes_emisor(emisor)
+        print(f"  ▶ {nombre_display} → buscando como: {variantes[0]}")
         noticias     = obtener_noticias(emisor)
         tiene_alerta = any(n["alerta"] for n in noticias)
 
@@ -538,7 +626,7 @@ for seg in segs_ordenados:
         if noticias:
             for n in noticias:
                 dc  = dot_color(n)
-                ibg = "bg-red-950/30 border-red-500/40"   if n["alerta"] else "bg-gray-800/40 border-gray-700/40"
+                ibg = "bg-red-950/30 border-red-500/40"  if n["alerta"] else "bg-gray-800/40 border-gray-700/40"
                 itx = "text-red-200" if n["alerta"] else "text-gray-300"
                 fb  = badge_fuente(n["fuente"])
 
@@ -565,7 +653,7 @@ for seg in segs_ordenados:
 """)
         else:
             out.append("""
-          <p class="text-xs text-gray-600 italic py-2">Sin noticias recientes este mes.</p>
+          <p class="text-xs text-gray-600 italic py-2">Sin noticias esta semana.</p>
 """)
 
         out.append("""
