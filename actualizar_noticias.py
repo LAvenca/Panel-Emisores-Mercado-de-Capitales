@@ -117,49 +117,40 @@ SCORING_NOTICIAS = [
     (8,  ['outlook negativo','perspectiva negativa','cambia perspectiva a negativa',
           'cambia outlook a negativo','modifica perspectiva a negativa',
           'perspectiva negativa deuda','perspectiva negativa bonos',
-          'perspectiva negativa deuda de largo plazo',
           'negative watch','under review negative','en revision negativa']),
     (7,  ['outlook positivo','perspectiva positiva','cambia perspectiva a positiva',
-          'cambia outlook a positivo','modifica perspectiva a positiva',
-          'perspectiva positiva deuda','perspectiva positiva bonos',
+          'cambia outlook a positivo','perspectiva positiva deuda',
           'positive watch','under review positive','en revision positiva']),
     (6,  ['outlook estable','perspectiva estable','outlook','perspectiva',
-          'cambia perspectiva','cambia outlook','modifica perspectiva',
-          'creditwatch','bajo revision','bajo revisión','en revision','en revisión',
+          'cambia perspectiva','cambia outlook','creditwatch',
+          'bajo revision','bajo revisión','en revision','en revisión',
           'afirma calificacion','confirma calificacion','ratifica calificacion',
-          'mantiene calificacion','perspectiva deuda de largo plazo',
-          'perspectiva bonos','perspectiva notas de deuda']),
+          'mantiene calificacion','perspectiva deuda de largo plazo']),
     (5,  ['calificacion','calificación','clasificacion','clasificación',
           'rating','nota crediticia','moody',"moody's",'fitch','s&p',
-          'standard & poor','investment grade','grado de inversion','grado de inversión',
-          'speculative grade','grado especulativo',
+          'standard & poor','investment grade','grado de inversion',
           'deuda de largo plazo','deuda largo plazo','bonos de largo plazo',
-          'notas de deuda','calificacion de bonos','calificacion de deuda',
-          'nota de deuda de largo plazo']),
+          'notas de deuda','calificacion de bonos','calificacion de deuda']),
     (4,  ['multa','sancion','sanción','demanda','denuncia',
           'investigacion','investigación','fraude','corrupcion','corrupción',
           'escandalo','escándalo','indecopi','sbs','smv','regulador',
           'incumplimiento','default','quiebra','concurso de acreedores',
-          'riesgo reputacional','contingencia legal','proceso judicial','sentencia']),
+          'riesgo reputacional','contingencia legal','proceso judicial']),
     (3,  ['bonos','bono','deuda','deuda corporativa','deuda de largo plazo',
-          'deuda largo plazo','notas de deuda','nota de deuda',
-          'emision','emisión','emite bonos','emite deuda',
-          'sindicado','prestamo sindicado','préstamo sindicado',
-          'prestamo','préstamo','credito','crédito',
-          'linea de credito','línea de crédito','financiamiento','refinanciamiento',
-          'aumento de capital','suscripcion','suscripción','colocacion','colocación',
-          'oferta publica','oferta pública','spread',
-          'tasa de interes','tasa de interés','cupón','cupon',
-          'vencimiento de deuda','amortizacion','amortización','hecho de importancia']),
+          'notas de deuda','nota de deuda','emision','emisión',
+          'emite bonos','emite deuda','sindicado','prestamo sindicado',
+          'prestamo','préstamo','credito','crédito','linea de credito',
+          'financiamiento','refinanciamiento','aumento de capital',
+          'colocacion','colocación','oferta publica','spread',
+          'tasa de interes','cupón','vencimiento de deuda','amortizacion',
+          'hecho de importancia']),
     (2,  ['capex','inversion','inversión','proyecto','expansion','expansión',
           'planta','infraestructura','contrato','concesion','concesión',
-          'adjudicacion','adjudicación','licitacion','licitación',
-          'obra','ampliacion','ampliación','construccion','construcción']),
-    (1,  ['utilidad','utilidades','ganancia','ganancias','perdida','pérdida',
+          'adjudicacion','licitacion','obra','ampliacion','construccion']),
+    (1,  ['utilidad','utilidades','ganancia','perdida','pérdida',
           'resultado','resultados','ebitda','ebit','ingresos','revenue',
-          'trimestre','semestre','anual','balance','estado financiero',
-          'flujo de caja','cash flow','margen','rentabilidad',
-          'dividendo','dividendos','acciones','bolsa','bvl']),
+          'trimestre','semestre','anual','balance',
+          'flujo de caja','margen','rentabilidad','dividendo','bolsa','bvl']),
 ]
 
 ALERTAS_REALES = [
@@ -186,6 +177,9 @@ ALERTAS_REALES = [
     "standard & poor rebaja","standard & poor eleva",
     "moody rebaja","moody eleva","moody baja","moody sube","moody coloca",
 ]
+
+# Score mínimo para aparecer en el resumen de "Todos"
+SCORE_MINIMO_RESUMEN = 3  # Solo noticias de deuda, rating, multas, capex o resultados
 
 def calcular_score(titulo):
     titulo_lower = titulo.lower()
@@ -271,6 +265,9 @@ PAISES_EXTRANJEROS = [
     'argentina','colombi','bogota','bogotá','brasil',
     'venezuela','ecuador','bolivia','uruguay','paraguay'
 ]
+
+# FIX (iv): Alias con nombres EXACTOS para búsqueda precisa
+# NO usar términos adicionales que contaminan — el nombre limpio es el mejor filtro
 ALIAS_EMISORES = {
     "jockey plaza":        "Jockey Plaza",
     "real plaza":          "Real Plaza",
@@ -285,20 +282,19 @@ ALIAS_EMISORES = {
     "habitat afp":         "AFP Habitat",
     "profuturo":           "Profuturo",
     "cerro verde":         "Cerro Verde",
-    "southern peru":       "Southern Peru",
-    "volcan":              "Volcan",
+    "southern peru":       "Southern Peru Copper",
+    "volcan":              "Volcan Compania Minera",
     "alicorp":             "Alicorp",
     "aceros arequipa":     "Aceros Arequipa",
     "banco de la nacion":  "Banco de la Nación Perú",
-    "banco gnb":           "Banco GNB",
+    "banco gnb":           "Banco GNB Perú",
     "mibanco":             "Mibanco",
     "financiera efectiva": "Financiera Efectiva",
-    "bbva peru":           "BBVA Peru",
+    "bbva peru":           "BBVA Perú",
     "bbva mexico":         "BBVA México",
-    "bbva":                "BBVA",
-    "scotiabank":          "Scotiabank Peru",
-    "bcp":                 "BCP",
-    "interbank":           "Interbank",
+    "scotiabank":          "Scotiabank Perú",
+    "bcp":                 "Banco de Crédito del Perú",
+    "interbank":           "Interbank Perú",
     "brown brothers":      "Brown Brothers Harriman",
     "fibra prime":         "Fibra Prime",
     "fossal":              "Fossal",
@@ -306,24 +302,25 @@ ALIAS_EMISORES = {
     "cementos pacasmayo":  "Cementos Pacasmayo",
     "ferreyros":           "Ferreyros",
     "luz del sur":         "Luz del Sur",
-    "pluz energia":        "Pluz Energía Peru",
-    "endispc":             "Enel Distribución Peru",
-    "enel distribuc":      "Enel Distribución Peru",
-    "enel":                "Enel Peru",
-    "edelnor":             "Enel Peru",
+    "pluz energia":        "Pluz Energía",
+    "endispc":             "Enel Distribución Perú",
+    "enel distribuc":      "Enel Distribución Perú",
+    "enel":                "Enel Perú",
+    "edelnor":             "Enel Distribución Perú",
     "telefonica":          "Telefónica del Perú",
-    "entel":               "Entel Peru",
-    "lima airport":        "LAP",
-    "lap":                 "LAP",
-    "rutas de lima":       "Rutas de Lima concesion peaje",
+    "entel":               "Entel Perú",
+    "lima airport":        "Lima Airport Partners",
+    "lap":                 "Lima Airport Partners",
+    "rutas de lima":       "Rutas de Lima",
     "auna s.a":            "Auna",
     "auna oncologia":      "Auna",
     "auna salud":          "Auna",
-    "gobierno peruano":    "Gobierno Peruano bonos deuda",
-    "republica del peru":  "República del Perú deuda soberana",
+    "gobierno peruano":    "Gobierno del Perú",
+    "republica del peru":  "República del Perú",
 }
 
-LIMITE_FECHA  = datetime.now() - timedelta(days=7)
+# FIX (iii): 2 semanas en lugar de 1
+LIMITE_FECHA  = datetime.now() - timedelta(days=14)
 fecha_reporte = datetime.now().strftime("%d/%m/%Y %H:%M")
 cache_prioritarias = []
 
@@ -386,44 +383,75 @@ def titulo_es_relevante_financiero(titulo):
 def titulo_relevante_para_emisor(titulo, emisor):
     titulo_lower = titulo.lower()
     nombre_lower = limpiar_nombre(emisor).lower()
-    if not titulo_es_relevante_financiero(titulo): return False
-    if 'auna' in nombre_lower and len(nombre_lower) < 10:
+    if not titulo_es_relevante_financiero(titulo):
+        return False
+
+    # FIX (iv): Coincidencia exacta usando el alias limpio del emisor
+    nombres = variantes_emisor(emisor)
+    termino_exacto = nombres[0].lower() if nombres else nombre_lower
+
+    # Auna: word boundary estricto
+    if 'auna' in nombre_lower and len(limpiar_nombre(emisor)) < 12:
         return bool(re.search(r'\bauna\b', titulo_lower))
+
+    # Fondos extranjeros: nombre exacto
     if es_emisor_extranjero(emisor):
-        variantes = variantes_emisor(emisor)
-        termino = variantes[0].lower() if variantes else nombre_lower
-        return termino in titulo_lower
+        return termino_exacto in titulo_lower
+
+    # Soberanos: contenido financiero
     if es_emisor_soberano(emisor):
         return any(t in titulo_lower for t in TEMAS_FINANCIEROS_SOBERANOS)
+
+    # Banco de la Nacion: excluir países
     if 'banco de la nacion' in nombre_lower or 'banco de la nación' in nombre_lower:
         for pais in PAISES_EXTRANJEROS:
-            if pais in titulo_lower: return False
+            if pais in titulo_lower:
+                return False
         return True
+
+    # Rutas de Lima: contexto concesión
     if 'rutas de lima' in nombre_lower:
-        CONTEXTO_RUTAS = ['rutas de lima','concesion','concesión','peaje','autopista',
+        CONTEXTO_RUTAS = ['rutas de lima','concesion','concesión','peaje',
                           'deuda','bonos','financiamiento','rating','calificacion',
                           'moody','fitch','resultado','utilidad','inversion',
-                          'proyecto vial','deuda de largo plazo','notas de deuda']
+                          'proyecto vial','deuda de largo plazo','notas de deuda',
+                          'brookfield','incumplimiento']
         return any(c in titulo_lower for c in CONTEXTO_RUTAS)
+
+    # FIX (iv): Para todos los demás — el título DEBE contener el término exacto del alias
+    # Esto evita falsos positivos de emisores con nombres similares
     tokens = tokens_significativos(emisor)
-    if tokens:
-        for pais in ['argentina','colombi','bogota','bogotá']:
-            if pais in titulo_lower:
-                termino_principal = variantes_emisor(emisor)[0].lower() if variantes_emisor(emisor) else ""
-                if termino_principal not in titulo_lower: return False
+
+    # Si tiene alias específico, exigir que esté en el título
+    if nombres and nombres[0] in ALIAS_EMISORES.values():
+        # Usar los primeros 2 tokens del alias como verificación
+        alias_tokens = [w.lower() for w in nombres[0].split() if len(w) > 3][:2]
+        matches_alias = sum(1 for t in alias_tokens if t in titulo_lower)
+        if len(alias_tokens) >= 2 and matches_alias < len(alias_tokens):
+            return False
+
+    # Verificar países extranjeros en contexto diferente
+    for pais in ['argentina', 'colombi', 'bogota', 'bogotá']:
+        if pais in titulo_lower:
+            if termino_exacto not in titulo_lower:
+                return False
+
     return True
 
 def variantes_emisor(emisor):
     emisor_clean = limpiar_nombre(emisor)
     emisor_clean = re.sub(r'\(.*?\)', '', emisor_clean).strip()
-    sufijos = (r'\b(S\.A\.A\.|S\.A\.C\.|S\.A\.|S\.A|SAA|SAC|S\.A\.B\.|S\.A\.B|'
+    sufijos = (r'\b(S\.A\.A\.|S\.A\.C\.|S\.A\.R\.L\.|S\.A\.|S\.A|SAA|SAC|S\.A\.B\.|S\.A\.B|'
                r'Corp\.?|Ltd\.?|Inc\.?|Co\.?|Perú|Peru|del Perú|de Peru|'
                r'Shopping Center|Centro Comercial|Administradora|Administrador|'
-               r'Asset Management|Investments?|Fund|Luxembourg|Ireland|Europe|SICAV|LLP)\b')
+               r'Asset Management|Investments?|Fund|Luxembourg|Ireland|Europe|SICAV|LLP|GP)\b')
     limpio = re.sub(sufijos, '', emisor_clean, flags=re.IGNORECASE).strip().strip('.,&')
     limpio = re.sub(r'\s+', ' ', limpio).strip()
+
     variantes = []
     emisor_lower = emisor_clean.lower()
+
+    # Alias: priorizar match más largo y específico
     mejor_alias, mejor_len = None, 0
     for clave, alias in ALIAS_EMISORES.items():
         if clave.strip() in emisor_lower and len(clave) > mejor_len:
@@ -431,16 +459,21 @@ def variantes_emisor(emisor):
             mejor_len   = len(clave)
     if mejor_alias:
         variantes.append(mejor_alias)
+
     if limpio and limpio not in variantes:
         variantes.append(limpio)
+
     palabras = [p for p in limpio.split() if p.lower() not in PREFIJOS_IGNORAR]
     if len(palabras) >= 2:
         dos = f"{palabras[0]} {palabras[1]}"
-        if dos not in variantes: variantes.append(dos)
+        if dos not in variantes:
+            variantes.append(dos)
+
     if palabras:
         primera = palabras[0]
         if primera not in variantes and len(primera) > 4 and primera.lower() not in TOKENS_GENERICOS:
             variantes.append(primera)
+
     return variantes if variantes else [emisor_clean]
 
 def tokens_significativos(emisor):
@@ -449,7 +482,7 @@ def tokens_significativos(emisor):
     sufijos = (r'\b(S\.A\.A\.|S\.A\.C\.|S\.A\.|S\.A|SAA|SAC|S\.A\.B\.|'
                r'Corp\.?|Ltd\.?|Inc\.?|Co\.?|Perú|Peru|'
                r'Shopping Center|Centro Comercial|Administradora|'
-               r'Asset Management|Luxembourg|Ireland|Europe|SICAV|LLP)\b')
+               r'Asset Management|Luxembourg|Ireland|Europe|SICAV|LLP|GP)\b')
     limpio = re.sub(sufijos, '', emisor_clean, flags=re.IGNORECASE)
     return [w.lower().strip('.,&') for w in limpio.split()
             if w.lower().strip('.,&') not in PALABRAS_IGNORAR
@@ -541,13 +574,14 @@ def buscar_en_cache_prioritarias(emisor):
 def buscar_bloomberg_linea(emisor):
     resultados = []
     nombres = variantes_emisor(emisor)
-    termino = nombres[0] if nombres else limpiar_nombre(emisor)
+    # FIX (iv): usar comillas para búsqueda exacta
+    termino = f'"{nombres[0]}"' if nombres else f'"{limpiar_nombre(emisor)}"'
     tokens  = tokens_significativos(emisor)
     minimo  = calcular_minimo(tokens)
     alias   = usa_alias(emisor)
     try:
         q   = urllib.parse.quote(f'{termino} site:bloomberglinea.com')
-        url = f"https://news.google.com/rss/search?q={q}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:w,sbd:1"
+        url = f"https://news.google.com/rss/search?q={q}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:m,sbd:1"
         req = urllib.request.Request(url, headers=HEADERS)
         with urllib.request.urlopen(req, context=contexto, timeout=10) as res:
             data = res.read().decode('utf-8', errors='ignore')
@@ -573,7 +607,7 @@ def buscar_bloomberg_linea(emisor):
     return resultados
 
 # ============================================================
-# 10. GOOGLE NEWS
+# 10. GOOGLE NEWS — búsqueda exacta con comillas
 # ============================================================
 def buscar_google_news(emisor):
     resultados, vistos = [], set()
@@ -581,21 +615,27 @@ def buscar_google_news(emisor):
     tokens    = tokens_significativos(emisor)
     minimo    = calcular_minimo(tokens)
     con_alias = usa_alias(emisor)
-    for termino in nombres:
+
+    # FIX (iv): usar comillas para coincidir exactamente con el nombre del emisor
+    termino_base = nombres[0] if nombres else limpiar_nombre(emisor)
+    termino_exacto = f'"{termino_base}"'
+
+    for termino_q in [termino_exacto]:  # Solo búsqueda exacta
         if len(resultados) >= 3: break
         queries = [
-            (f'{termino} (downgrade OR upgrade OR outlook OR rating OR Moody OR Fitch OR "S&P" OR perspectiva OR calificacion OR "deuda de largo plazo" OR bonos OR sindicado)', True),
-            (f'{termino} (finanzas OR resultados OR bolsa OR BVL OR SMV OR inversión OR utilidad OR "notas de deuda" OR capex OR multa)', False),
-            (termino, False),
+            (f'{termino_q} (downgrade OR upgrade OR outlook OR rating OR Moody OR Fitch OR "S&P" OR perspectiva OR calificacion OR "deuda de largo plazo" OR bonos OR sindicado OR multa)', True),
+            (f'{termino_q} (finanzas OR resultados OR BVL OR SMV OR inversión OR utilidad OR "notas de deuda" OR capex OR ebitda OR trimestre)', False),
+            (termino_q, False),
         ]
         for query, es_credit in queries:
             if len(resultados) >= 3: break
             try:
-                url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:w,sbd:1"
+                # FIX (iii): tbs=qdr:2w = últimas 2 semanas
+                url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:m,sbd:1"
                 req = urllib.request.Request(url, headers=HEADERS)
                 with urllib.request.urlopen(req, context=contexto, timeout=10) as res:
                     data = res.read().decode('utf-8', errors='ignore')
-                for item in re.findall(r'<item>([\s\S]*?)</item>', data)[:6]:
+                for item in re.findall(r'<item>([\s\S]*?)</item>', data)[:8]:
                     t = re.search(r'<title><!\[CDATA\[(.*?)\]\]></title>|<title>(.*?)</title>', item)
                     l = re.search(r'<link>(.*?)</link>', item)
                     d = re.search(r'<pubDate>(.*?)</pubDate>', item)
@@ -605,6 +645,7 @@ def buscar_google_news(emisor):
                     fecha  = d.group(1).strip() if d else ""
                     fuente = (s.group(1) or "Prensa").strip() if s else "Prensa"
                     if not titulo or titulo in vistos: continue
+                    # FIX (iii): validar fecha contra LIMITE_FECHA (14 días)
                     if not es_reciente(fecha): continue
                     if not con_alias:
                         matches = sum(1 for tk in tokens if tk in titulo.lower())
@@ -621,25 +662,21 @@ def buscar_google_news(emisor):
     return resultados[:3]
 
 # ============================================================
-# 11. GENERAR RESUMEN IA CON CLAUDE API
+# 11. GENERAR RESUMEN IA POR EMISOR
 # ============================================================
 def generar_resumen_ia(emisor, noticias):
-    """Llama a Claude para generar un resumen ejecutivo de las noticias del emisor."""
     if not noticias:
         return None
     titulos = "\n".join([f"- {n['titulo']} ({n['fecha']})" for n in noticias])
-    prompt = f"""Eres un analista de crédito senior. Basándote SOLO en estos titulares de noticias del emisor "{limpiar_nombre(emisor)}", genera un resumen ejecutivo en español de máximo 2 oraciones (60 palabras máximo).
+    prompt = f"""Eres un analista de crédito senior. Basándote SOLO en estos titulares del emisor "{limpiar_nombre(emisor)}", genera un resumen ejecutivo en español de máximo 2 oraciones (60 palabras).
 
-Prioriza en este orden: downgrades/upgrades de rating, cambios de outlook/perspectiva de deuda, emisiones de deuda o bonos, multas graves, CAPEX relevante, resultados financieros materiales.
-
-Si no hay información material crediticia, indica brevemente el contexto financiero general.
-NO inventes información. USA SOLO lo que está en los titulares.
+Prioriza: downgrades/upgrades de rating de deuda, cambios de outlook/perspectiva, emisiones de deuda de largo plazo o bonos, multas graves, CAPEX relevante, resultados financieros materiales.
+NO inventes. USA SOLO lo que está en los titulares.
 
 Titulares:
 {titulos}
 
-Responde SOLO con el resumen, sin introducción ni etiquetas."""
-
+Responde SOLO con el resumen, sin introducción."""
     try:
         payload = json.dumps({
             "model": "claude-sonnet-4-20250514",
@@ -649,10 +686,7 @@ Responde SOLO con el resumen, sin introducción ni etiquetas."""
         req = urllib.request.Request(
             "https://api.anthropic.com/v1/messages",
             data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "anthropic-version": "2023-06-01"
-            },
+            headers={"Content-Type": "application/json", "anthropic-version": "2023-06-01"},
             method="POST"
         )
         with urllib.request.urlopen(req, context=contexto, timeout=15) as res:
@@ -663,7 +697,82 @@ Responde SOLO con el resumen, sin introducción ni etiquetas."""
         return None
 
 # ============================================================
-# 12. CONSOLIDAR Y ORDENAR NOTICIAS (máximo 3)
+# 12. RESUMEN CONSOLIDADO PARA TAB "TODOS"
+# FIX (ii): Solo noticias materiales, sin tarjetas individuales
+# ============================================================
+def generar_resumen_portafolio(resultados_por_segmento):
+    noticias_criticas = []
+    for seg, emisores in resultados_por_segmento.items():
+        for emisor, noticias, resumen in emisores:
+            for n in noticias:
+                score = n.get("score", 0)
+                alerta = n.get("alerta", False)
+                # Solo noticias materiales: score >= SCORE_MINIMO_RESUMEN
+                if alerta or score >= SCORE_MINIMO_RESUMEN:
+                    noticias_criticas.append({
+                        "emisor":    limpiar_nombre(emisor),
+                        "segmento":  seg,
+                        "titulo":    n["titulo"],
+                        "link":      n["link"],
+                        "fecha":     n["fecha"],
+                        "fuente":    n["fuente"],
+                        "score":     score,
+                        "alerta":    alerta,
+                    })
+
+    noticias_criticas.sort(key=lambda x: -(10 if x["alerta"] else x["score"]))
+    top = noticias_criticas[:15]
+
+    if not top:
+        return None, []
+
+    lineas = "\n".join([
+        f"- [{x['emisor']} / {x['segmento']}] {x['titulo']} ({x['fecha']})"
+        for x in top
+    ])
+
+    prompt = f"""Eres un analista de crédito senior de un fondo de inversión peruano.
+Basándote SOLO en estos titulares del portafolio, genera un resumen ejecutivo en español de máximo 5 oraciones (150 palabras).
+
+Prioriza estrictamente:
+1. Downgrades de calificación crediticia de deuda
+2. Upgrades de calificación crediticia de deuda
+3. Cambios de outlook/perspectiva de deuda (negativo antes que positivo)
+4. Emisiones de deuda de largo plazo, bonos o notas de deuda
+5. Multas o sanciones graves
+6. Inversiones relevantes en CAPEX
+7. Resultados financieros materiales
+
+Menciona los emisores por nombre. NO inventes. USA SOLO lo que está en los titulares.
+
+Titulares:
+{lineas}
+
+Responde SOLO con el resumen ejecutivo, sin títulos."""
+
+    resumen_texto = None
+    try:
+        payload = json.dumps({
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 250,
+            "messages": [{"role": "user", "content": prompt}]
+        }).encode('utf-8')
+        req = urllib.request.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=payload,
+            headers={"Content-Type": "application/json", "anthropic-version": "2023-06-01"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, context=contexto, timeout=20) as res:
+            data = json.loads(res.read().decode('utf-8'))
+            resumen_texto = data.get("content", [{}])[0].get("text", "").strip()
+    except Exception as e:
+        print(f"  ⚠ Resumen portafolio IA no disponible: {e}")
+
+    return resumen_texto, top
+
+# ============================================================
+# 13. CONSOLIDAR NOTICIAS (máximo 3)
 # ============================================================
 def obtener_noticias(emisor):
     todas = (
@@ -685,10 +794,10 @@ def obtener_noticias(emisor):
     # Fallback mínimo 3
     if len(resultado) < 3:
         nombres = variantes_emisor(emisor)
-        termino = nombres[0] if nombres else limpiar_nombre(emisor)
+        termino = f'"{nombres[0]}"' if nombres else f'"{limpiar_nombre(emisor)}"'
         titulos_vistos = {n["titulo"] for n in resultado}
-        for fq in [f'{termino} finanzas economia deuda bonos resultados',
-                   f'{termino} Peru financiero crediticio notas deuda']:
+        for fq in [f'{termino} finanzas deuda bonos resultados Peru',
+                   f'{termino} financiero crediticio calificacion']:
             if len(resultado) >= 3: break
             try:
                 url = f"https://news.google.com/rss/search?q={urllib.parse.quote(fq)}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:m,sbd:1"
@@ -708,6 +817,7 @@ def obtener_noticias(emisor):
                     if not titulo or titulo in titulos_vistos: continue
                     if not titulo_es_relevante_financiero(titulo): continue
                     if not titulo_relevante_para_emisor(titulo, emisor): continue
+                    if not es_reciente(fecha): continue
                     titulo_lower = titulo.lower()
                     tiene_fin = any(kw in titulo_lower for kw in [
                         'financier','econom','banco','credito','crédito','inversion',
@@ -728,7 +838,7 @@ def obtener_noticias(emisor):
     return resultado[:3]
 
 # ============================================================
-# 13. HELPERS HTML
+# 14. HELPERS HTML
 # ============================================================
 ORDEN_SEG = ["Renta Fija", "Renta Variable", "Fondos", "Alternativos"]
 COLOR_SEG = {
@@ -787,7 +897,6 @@ def render_cards(emisores_con_noticias, seg):
         pin_badge    = '<span class="text-[9px] bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 px-1.5 py-0.5 rounded font-bold">📌 Prioritario</span>' if es_prior else ""
         rating_badge = '<span class="text-[9px] bg-red-500/20 border border-red-500/30 text-red-400 px-2 py-0.5 rounded font-bold animate-pulse">⚠ Rating Alert</span>' if tiene_alerta else ""
 
-        # Resumen IA
         resumen_html = ""
         if resumen:
             resumen_html = f"""
@@ -835,8 +944,95 @@ def render_cards(emisores_con_noticias, seg):
           </div>""")
     return ''.join(cards)
 
+# FIX (ii): Tab "Todos" solo muestra resumen, no tarjetas individuales
+def render_tab_todos(resumen_portafolio, noticias_criticas_top):
+    if not noticias_criticas_top and not resumen_portafolio:
+        return '<div class="text-gray-500 text-sm italic p-8 text-center">Sin noticias materiales esta semana.</div>'
+
+    resumen_bloque = ""
+    if resumen_portafolio:
+        resumen_bloque = f"""
+      <div class="mb-6 pb-5 border-b border-gray-700/50">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="text-[10px] bg-violet-500/20 border border-violet-500/30 text-violet-300 px-2 py-0.5 rounded font-bold">✦ Análisis IA del Portafolio</span>
+        </div>
+        <p class="text-sm text-gray-200 leading-relaxed">{html.escape(resumen_portafolio)}</p>
+      </div>"""
+
+    SCORE_LABELS = {
+        10: ("🔴", "Downgrade"),
+        9:  ("🟢", "Upgrade"),
+        8:  ("🟠", "Outlook Negativo"),
+        7:  ("🔵", "Outlook Positivo"),
+        6:  ("🟡", "Cambio Perspectiva"),
+        5:  ("⚪", "Acción Crediticia"),
+        4:  ("🔺", "Riesgo Reputacional"),
+        3:  ("📄", "Deuda / Emisión"),
+        2:  ("🏗", "CAPEX / Inversión"),
+        1:  ("📊", "Resultados"),
+    }
+
+    items_html = ""
+    for n in noticias_criticas_top:
+        score = n.get("score", 0)
+        alerta = n.get("alerta", False)
+        icono, tipo = SCORE_LABELS.get(score, ("•", "General"))
+        if alerta and score >= 9:
+            row_bg = "bg-red-950/20 border-red-500/30"
+            txt    = "text-red-200"
+        elif alerta or score >= 8:
+            row_bg = "bg-orange-950/20 border-orange-500/30"
+            txt    = "text-orange-200"
+        elif score >= 5:
+            row_bg = "bg-yellow-950/10 border-yellow-600/20"
+            txt    = "text-yellow-100"
+        else:
+            row_bg = "bg-gray-800/30 border-gray-700/30"
+            txt    = "text-gray-300"
+
+        items_html += f"""
+        <div class="flex gap-3 items-start p-3 rounded-lg border {row_bg}">
+          <span class="text-base shrink-0 mt-0.5">{icono}</span>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-0.5 flex-wrap">
+              <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">{html.escape(n['emisor'])}</span>
+              <span class="text-[9px] text-gray-600">·</span>
+              <span class="text-[9px] text-gray-500">{html.escape(n['segmento'])}</span>
+              <span class="text-[9px] text-gray-600">·</span>
+              <span class="text-[9px] bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded border border-gray-700">{tipo}</span>
+            </div>
+            <a href="{html.escape(n['link'])}" target="_blank"
+               class="text-xs font-medium {txt} hover:text-blue-400 leading-snug line-clamp-2">
+              {html.escape(n['titulo'])}
+            </a>
+            <div class="flex gap-2 mt-1 text-[10px] text-gray-600">
+              <span>{html.escape(n['fuente'])}</span>
+              <span>·</span>
+              <span>{html.escape(n['fecha'])}</span>
+            </div>
+          </div>
+        </div>"""
+
+    return f"""
+  <div class="max-w-4xl mx-auto">
+    <div class="bg-gray-900/80 border border-gray-700/50 rounded-xl p-6 mb-8">
+      <h2 class="text-base font-bold text-white mb-4 flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-violet-400 inline-block"></span>
+        Resumen Ejecutivo del Portafolio
+        <span class="text-[10px] text-gray-500 font-normal ml-1">— Últimas 2 semanas</span>
+      </h2>
+      {resumen_bloque}
+      <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
+        Noticias Materiales ({len(noticias_criticas_top)})
+      </h3>
+      <div class="flex flex-col gap-2">
+        {items_html}
+      </div>
+    </div>
+  </div>"""
+
 # ============================================================
-# 14. EJECUCIÓN PRINCIPAL
+# 15. EJECUCIÓN PRINCIPAL
 # ============================================================
 cargar_fuentes_prioritarias()
 emisores_data = leer_emisores_excel("Emisores.xlsx")
@@ -854,14 +1050,18 @@ else:
         sobera = "🏛" if es_emisor_soberano(e) else ""
         print(f"   {limpiar_nombre(e):50s} → {v[0]:30s} {sem} {prior}{extran}{sobera}")
 
+# FIX (i): Respetar segmentos del Excel — no mezclar
 segmentos = {}
 for emisor, seg in emisores_data.items():
-    segmentos.setdefault(seg, []).append(emisor)
+    seg_normalizado = seg.strip()  # Limpiar espacios que causan duplicados
+    segmentos.setdefault(seg_normalizado, []).append(emisor)
 
 segs_ordenados = sorted(segmentos.keys(), key=lambda s: ORDEN_SEG.index(s) if s in ORDEN_SEG else 99)
 
+print(f"\nSegmentos detectados: {list(segmentos.keys())}")
+
 # ============================================================
-# 15. PRE-CALCULAR NOTICIAS + RESUMEN IA Y ORDENAR
+# 16. PRE-CALCULAR NOTICIAS + RESUMEN IA
 # ============================================================
 print("\n🔍 Buscando noticias y generando resúmenes...")
 resultados_por_segmento = {}
@@ -871,7 +1071,7 @@ for seg in segs_ordenados:
     for emisor in segmentos[seg]:
         nombre_display = limpiar_nombre(emisor)
         v = variantes_emisor(emisor)
-        print(f"  ▶ {nombre_display:50s} → {v[0]}")
+        print(f"  ▶ [{seg}] {nombre_display:45s} → {v[0]}")
         noticias = obtener_noticias(emisor)
         if noticias:
             resumen = generar_resumen_ia(emisor, noticias)
@@ -896,8 +1096,12 @@ for seg in segs_ordenados:
     else:
         print(f"  ⚠ Segmento '{seg}' sin noticias, omitido")
 
+# Generar resumen del portafolio
+print("\n✦ Generando resumen ejecutivo del portafolio...")
+resumen_portafolio, noticias_criticas_top = generar_resumen_portafolio(resultados_por_segmento)
+
 # ============================================================
-# 16. CONSTRUCCIÓN HTML CON TABS
+# 17. CONSTRUCCIÓN HTML CON TABS
 # ============================================================
 total_emisores = sum(len(v) for v in resultados_por_segmento.values())
 
@@ -905,7 +1109,7 @@ tabs_nav = f"""
     <button onclick="mostrarTab('todos')" id="tab-btn-todos"
       class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold border transition-all
              bg-white/10 border-white/20 text-white">
-      📋 Todos <span class="ml-1 text-[10px] opacity-60">({total_emisores})</span>
+      📋 Resumen <span class="ml-1 text-[10px] opacity-60">({len(noticias_criticas_top)} eventos)</span>
     </button>"""
 
 for seg, items in resultados_por_segmento.items():
@@ -918,16 +1122,10 @@ for seg, items in resultados_por_segmento.items():
       {icono} {html.escape(seg)} <span class="ml-1 text-[10px] opacity-60">({len(items)})</span>
     </button>"""
 
-tabs_content = '<div id="tab-todos" class="tab-panel">'
-for seg, items in resultados_por_segmento.items():
-    tc = COLOR_SEG.get(seg, ("text-gray-400",))[0]
-    tabs_content += f"""
-    <div class="mb-12">
-      <h2 class="text-lg font-bold mb-5 pb-2 border-b border-gray-800 {tc}">{html.escape(seg)}</h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">{render_cards(items, seg)}</div>
-    </div>"""
-tabs_content += '</div>'
+# FIX (ii): Tab "todos" = solo resumen ejecutivo
+tabs_content = f'<div id="tab-todos" class="tab-panel">{render_tab_todos(resumen_portafolio, noticias_criticas_top)}</div>'
 
+# Tabs por segmento = tarjetas completas
 for seg, items in resultados_por_segmento.items():
     tc  = COLOR_SEG.get(seg, ("text-gray-400",))[0]
     sid = seg.lower().replace(' ', '-')
@@ -954,7 +1152,7 @@ page = f"""<!DOCTYPE html>
         Monitor Crediticio del Portafolio
       </h1>
       <p class="text-gray-400 text-sm mt-1">
-        Fuentes: BVL · SMV · Bloomberg Línea · Google News &nbsp;·&nbsp; Última semana
+        Fuentes: BVL · SMV · Bloomberg Línea · Google News &nbsp;·&nbsp; Últimas 2 semanas
       </p>
     </div>
     <div class="text-xs text-gray-500 font-mono">Actualizado: {fecha_reporte}</div>
@@ -988,8 +1186,7 @@ page = f"""<!DOCTYPE html>
     {tabs_nav}
   </div>
 
-  {tabs_content if resultados_por_segmento else
-   '<div class="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center max-w-xl mx-auto my-12"><p class="text-emerald-400 font-medium text-lg mb-2">☕ Todo tranquilo</p><p class="text-gray-400 text-sm">No se encontraron noticias esta semana para ningún emisor.</p></div>'}
+  {tabs_content}
 
   <footer class="mt-12 pt-6 border-t border-gray-800 text-center text-xs text-gray-600">
     Monitor Crediticio · BVL · SMV · Bloomberg Línea · Google News · Solo fuentes públicas
@@ -1017,7 +1214,7 @@ page = f"""<!DOCTYPE html>
 </html>"""
 
 # ============================================================
-# 17. GUARDAR
+# 18. GUARDAR
 # ============================================================
 with open("index.html", "w", encoding="utf-8") as f:
     f.write(page)
