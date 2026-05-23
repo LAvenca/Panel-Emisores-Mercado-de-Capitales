@@ -95,81 +95,225 @@ def semaforo_html(color):
     return f'<span class="text-[9px] border px-1.5 py-0.5 rounded font-bold {clases}">{icono} {label}</span>'
 
 # ============================================================
-# 3. SCORING GRANULAR
+# 3. SCORING SEGÚN CRITERIOS DE PRIORIZACIÓN OFICIALES
 # ============================================================
 EMISORES_PRIORITARIOS = ["rutas de lima", "auna"]
-SCORE_MINIMO_RESUMEN  = 5  # Solo noticias materiales en tab Resumen
+SCORE_MINIMO_RESUMEN  = 5
 
+# NIVEL 10 — Alta Prioridad Absoluta: Downgrade / Default / Estrés financiero
+# Aplica a Renta Fija, Variable y Fondos
 SCORING_NOTICIAS = [
-    (10, ['downgrade','rebaja','rebaja de calificacion','rebaja calificacion',
-          'rebaja de nota','rebaja crediticia','rebaja de rating',
-          'reduccion de calificacion','reducción de calificación',
-          'baja de nota','baja la calificacion','baja la nota',
-          'degradacion crediticia','coloca en revision a la baja',
-          'revision a la baja','watch negative','creditwatch negative',
-          'on review for downgrade','rebaja deuda','rebaja bonos',
-          'rebaja notas de deuda','rebaja deuda de largo plazo']),
-    (9,  ['upgrade','mejora de calificacion','mejora calificacion',
-          'mejora de nota','mejora de rating','eleva calificacion',
-          'eleva la nota','eleva la calificacion','sube calificacion',
-          'sube la nota','alza de calificacion','alza de nota',
-          'revision al alza','watch positive','creditwatch positive',
-          'on review for upgrade','mejora deuda','mejora bonos',
-          'mejora deuda de largo plazo']),
-    (8,  ['outlook negativo','perspectiva negativa','cambia perspectiva a negativa',
-          'cambia outlook a negativo','modifica perspectiva a negativa',
-          'perspectiva negativa deuda','perspectiva negativa bonos',
-          'negative watch','under review negative','en revision negativa']),
-    (7,  ['outlook positivo','perspectiva positiva','cambia perspectiva a positiva',
-          'cambia outlook a positivo','perspectiva positiva deuda',
-          'positive watch','under review positive','en revision positiva']),
-    (6,  ['outlook estable','perspectiva estable','outlook','perspectiva',
-          'cambia perspectiva','cambia outlook','creditwatch',
-          'bajo revision','bajo revisión','en revision','en revisión',
-          'afirma calificacion','confirma calificacion','ratifica calificacion',
-          'mantiene calificacion','perspectiva deuda de largo plazo']),
-    (5,  ['calificacion','calificación','clasificacion','clasificación',
-          'rating','nota crediticia','moody',"moody's",'fitch','s&p',
-          'standard & poor','investment grade','grado de inversion',
-          'deuda de largo plazo','deuda largo plazo','bonos de largo plazo',
-          'notas de deuda','calificacion de bonos','calificacion de deuda']),
-    (4,  ['multa','sancion','sanción','demanda','denuncia',
-          'investigacion','investigación','fraude','corrupcion','corrupción',
-          'escandalo','escándalo','indecopi','sbs','regulador',
-          'incumplimiento','default','quiebra','concurso de acreedores',
-          'riesgo reputacional','contingencia legal','proceso judicial']),
-    (3,  ['bonos','bono','deuda','deuda corporativa','deuda de largo plazo',
-          'notas de deuda','nota de deuda','emision','emisión',
-          'emite bonos','emite deuda','sindicado','prestamo sindicado',
-          'prestamo','préstamo','credito','crédito','linea de credito',
-          'financiamiento','refinanciamiento','aumento de capital',
-          'colocacion','colocación','oferta publica','spread',
-          'tasa de interes','cupón','vencimiento de deuda','amortizacion',
-          'hecho de importancia']),
-    (2,  ['capex','inversion','inversión','proyecto','expansion','expansión',
-          'planta','infraestructura','contrato','concesion','concesión',
-          'adjudicacion','licitacion','obra','ampliacion','construccion']),
-    (1,  ['utilidad','utilidades','ganancia','perdida','pérdida',
-          'resultado','resultados','ebitda','ebit','ingresos','revenue',
-          'trimestre','semestre','anual','balance',
-          'flujo de caja','margen','rentabilidad','dividendo','bolsa','bvl']),
+    (10, [
+        # Downgrade / rebaja de calificación
+        'downgrade','rebaja','rebaja de calificacion','rebaja calificacion',
+        'rebaja de nota','rebaja crediticia','rebaja de rating',
+        'reduccion de calificacion','reducción de calificación',
+        'baja de nota','baja la calificacion','baja la nota',
+        'degradacion crediticia','coloca en revision a la baja',
+        'revision a la baja','watch negative','creditwatch negative',
+        'on review for downgrade','rebaja deuda','rebaja bonos',
+        'rebaja notas de deuda','rebaja deuda de largo plazo',
+        # Default / estrés financiero (RF)
+        'default','incumplimiento de pago','incumple','suspende pagos',
+        'quiebra','bancarrota','concurso de acreedores',
+        'reestructuracion de deuda','reestructuración de deuda',
+        'refinanciamiento forzoso','moratoria','cesacion de pagos',
+        'deterioro de liquidez','deterioro de solvencia',
+        'crisis financiera','estrés financiero',
+        # Fondos: restricción de rescates / liquidación
+        'restriccion de rescates','restricción de rescates',
+        'suspende rescates','liquidacion del fondo','liquidación del fondo',
+        'suspende operaciones','cierre del fondo',
+        'tracking error elevado','ciberataque',
+    ]),
+
+    (9, [
+        # Alta Prioridad Absoluta: Fusiones / Adquisiciones / Cambios de control
+        'fusion','fusión','adquisicion','adquisición','compra de','adquiere',
+        'absorcion','absorción','cambio de control','toma de control',
+        'oferta publica de adquisicion','opa','reorganizacion corporativa',
+        'reorganización corporativa','escision','escisión','spin-off',
+        'joint venture','alianza estrategica','alianza estratégica',
+        # RV: cambios relevantes en directorio / management / CIO
+        'renuncia del ceo','cambio de ceo','nuevo ceo',
+        'sale el director','cambio en directorio','nuevo directorio',
+        'renuncia del cfo','nuevo cfo','cambio de gerente general',
+        'sale portfolio manager','nuevo cio','renuncia cio',
+        'cambio en gobierno corporativo',
+    ]),
+
+    (8, [
+        # Upgrade / mejora de calificación (Alta Prioridad RF)
+        'upgrade','mejora de calificacion','mejora calificacion',
+        'mejora de nota','mejora de rating','eleva calificacion',
+        'eleva la nota','eleva la calificacion','sube calificacion',
+        'sube la nota','alza de calificacion','alza de nota',
+        'revision al alza','watch positive','creditwatch positive',
+        'on review for upgrade','mejora deuda','mejora bonos',
+        'mejora deuda de largo plazo',
+        # Outlook negativo (RF/RV)
+        'outlook negativo','perspectiva negativa',
+        'cambia perspectiva a negativa','cambia outlook a negativo',
+        'perspectiva negativa deuda','perspectiva negativa bonos',
+        'negative watch','under review negative','en revision negativa',
+        # Resultados fuera de expectativas (RV/RF)
+        'por debajo de expectativas','supera expectativas',
+        'resultado negativo sorpresa','perdida inesperada',
+        'profit warning','guidance reducido','guidance rebajado',
+        'resultados decepcionantes','resultados superan',
+        # Multas / litigios / sanciones (RF/RV/Fondos)
+        'multa','sancion','sanción','investigacion regulatoria',
+        'investigación regulatoria','fraude','corrupcion','corrupción',
+        'manipulacion de mercado','manipulación de mercado',
+        'conflicto de interes','conflicto de interés',
+        'escandalo','escándalo','denuncia penal',
+        'indecopi','sbs sanciona','smv sanciona',
+        'proceso judicial','sentencia condenatoria',
+    ]),
+
+    (7, [
+        # Outlook positivo (RF)
+        'outlook positivo','perspectiva positiva',
+        'cambia perspectiva a positiva','cambia outlook a positivo',
+        'perspectiva positiva deuda','perspectiva positiva bonos',
+        'positive watch','under review positive','en revision positiva',
+        # Clasificadoras (RF alta prioridad)
+        "moody's",'moody','fitch','s&p','standard & poor',
+        'japan credit rating','pacific credit rating',
+        "moody's local",'apoyo & asociados','apoyo y asociados',
+        'classifica','clasifica','califica','emite opinion',
+        'informe de clasificacion','informe de calificacion',
+        # Nuevas emisiones de deuda / aumentos de capital (RF/RV media)
+        'nueva emision','nueva emisión','emite bonos','coloca bonos',
+        'emision de deuda','emisión de deuda','aumento de capital',
+        'oferta publica de acciones','ipo','suscripcion de acciones',
+        'recompra de acciones','buyback','dividendo extraordinario',
+        'cambio en dividendos','suspension de dividendos',
+    ]),
+
+    (6, [
+        # Outlook estable / cambio de perspectiva general (RF)
+        'outlook estable','perspectiva estable',
+        'cambia perspectiva','cambia outlook','modifica perspectiva',
+        'creditwatch','bajo revision','bajo revisión',
+        'en revision','en revisión',
+        'afirma calificacion','confirma calificacion',
+        'ratifica calificacion','mantiene calificacion',
+        # Regulatorio con impacto material (RF/RV/Fondos)
+        'cambio regulatorio','nueva regulacion','nueva regulación',
+        'basilea','limite regulatorio','límite regulatorio',
+        'nueva norma sbs','nueva norma smv','nueva norma bcr',
+        'requerimiento de capital','provisiones obligatorias',
+        # Fondos: cambios en AUM / flujos / estrategia
+        'salida de flujos','retiro masivo','flujos negativos',
+        'caida de aum','caída de aum','reduccion de aum',
+        'cambio de estrategia','cambio de benchmark',
+        'cambio de politica de inversion','cambio de política de inversión',
+        'cambio de custodio','fusiona fondos','fusión de fondos',
+    ]),
+
+    (5, [
+        # Calificación crediticia general
+        'calificacion','calificación','clasificacion','clasificación',
+        'rating','nota crediticia','investment grade','grado de inversion',
+        'grado de inversión','speculative grade','grado especulativo',
+        'deuda de largo plazo','deuda largo plazo','bonos de largo plazo',
+        'notas de deuda','calificacion de bonos','calificacion de deuda',
+        # Hecho de importancia
+        'hecho de importancia','hecho relevante','material fact',
+        # Eventos macro / sectoriales (media prioridad RF/RV)
+        'riesgo soberano','riesgo pais','riesgo país',
+        'spread soberano','spread credito','credit spread',
+        'evento geopolitico','evento geopolítico',
+    ]),
+
+    (4, [
+        # CAPEX / inversiones relevantes (RF/RV media)
+        'capex','inversion relevante','inversión relevante',
+        'proyecto de expansion','proyecto de expansión',
+        'nueva planta','nueva infraestructura',
+        'contrato relevante','concesion relevante','concesión relevante',
+        'adjudicacion relevante','adjudicación relevante',
+        'licitacion ganada','licitación ganada',
+        # Resultados financieros (RV/RF media)
+        'ebitda','resultado operativo','resultado neto',
+        'utilidad neta','perdida neta','pérdida neta',
+        'ingresos trimestrales','resultado trimestral',
+        'resultado semestral','resultado anual',
+        'margen operativo','flujo de caja libre','free cash flow',
+        # Fondos: variaciones AUM / cambios operativos
+        'variacion de aum','variación de aum','nuevos flujos',
+        'lanzamiento de fondo','nuevo etf','nuevo fondo',
+        'cambio de comisiones','cambio de custodio',
+    ]),
+
+    (3, [
+        # Financiamiento / deuda general
+        'bonos','bono','deuda','deuda corporativa',
+        'emision','emisión','sindicado','prestamo sindicado',
+        'prestamo','préstamo','credito','crédito',
+        'linea de credito','línea de crédito',
+        'financiamiento','refinanciamiento',
+        'colocacion','colocación','oferta publica',
+        'spread','tasa de interes','tasa de interés',
+        'cupón','cupon','vencimiento de deuda','amortizacion',
+        # Estructura accionaria (RV)
+        'cambio en estructura accionaria','nuevo accionista',
+        'venta de participacion','venta de participación',
+        'aumento de participacion','aumento de participación',
+    ]),
+
+    (2, [
+        # Expansión / proyectos generales
+        'proyecto','expansion','expansión','planta',
+        'infraestructura','contrato','concesion','concesión',
+        'adjudicacion','licitacion','obra','ampliacion','construccion',
+        # RV: cambios en recomendaciones de analistas
+        'recomendacion de analista','recomendación de analista',
+        'precio objetivo','target price','eleva precio objetivo',
+        'rebaja precio objetivo','inicia cobertura',
+        'sobrepondera','infrapondera','mantener',
+    ]),
+
+    (1, [
+        # Resultados genéricos / baja prioridad
+        'utilidad','utilidades','ganancia','perdida','pérdida',
+        'resultado','resultados','ingresos','revenue',
+        'trimestre','semestre','anual','balance',
+        'flujo de caja','margen','rentabilidad',
+        'dividendo','dividendos','acciones','bolsa','bvl',
+        # Fondos: actualizaciones rutinarias
+        'actualizacion operativa','actualización operativa',
+        'cambio menor','cambio organizacional',
+    ]),
 ]
 
 ALERTAS_REALES = [
+    # Downgrade explícito
     'downgrade','rebaja la calificacion','rebaja calificacion',
     'rebaja de calificacion','rebaja la nota','baja la calificacion',
     'baja la nota','degrada calificacion','coloca en revision a la baja',
     'rebaja deuda de largo plazo','rebaja bonos','rebaja notas de deuda',
+    # Default / estrés
+    'default','incumplimiento de pago','suspende pagos','quiebra',
+    'concurso de acreedores','reestructuracion de deuda',
+    'restriccion de rescates','liquidacion del fondo',
+    # Upgrade
     'upgrade','mejora la calificacion','mejora calificacion',
     'eleva la calificacion','eleva calificacion','sube la calificacion',
     'alza la calificacion','revision al alza',
     'mejora deuda de largo plazo','mejora bonos',
+    # Outlook con dirección
     'outlook negativo','perspectiva negativa',
     'outlook positivo','perspectiva positiva',
     'cambia perspectiva a negativa','cambia perspectiva a positiva',
     'cambia outlook a negativo','cambia outlook a positivo',
     'watch negative','watch positive',
     'creditwatch negative','creditwatch positive',
+    # Fusiones / adquisiciones
+    'fusion','fusión','adquisicion','adquisición','cambio de control',
+    'toma de control','opa',
+    # Agencias con verbo
     "moody's rebaja","moody's eleva","moody's baja","moody's sube",
     "moody's coloca","moody's cambia","moody's afirma",
     "fitch rebaja","fitch eleva","fitch baja","fitch sube",
@@ -178,7 +322,30 @@ ALERTAS_REALES = [
     "s&p coloca","s&p cambia","s&p afirma",
     "standard & poor rebaja","standard & poor eleva",
     "moody rebaja","moody eleva","moody baja","moody sube","moody coloca",
+    "apoyo & asociados rebaja","apoyo & asociados eleva",
+    "pacific credit rating rebaja","pacific credit rating eleva",
+    "moody's local rebaja","moody's local eleva",
+    # Multas / fraude
+    'fraude','corrupcion','manipulacion de mercado',
+    'sbs sanciona','smv sanciona','sentencia condenatoria',
+    # Management
+    'renuncia del ceo','sale el director','nuevo ceo',
+    'sale portfolio manager','renuncia cio',
 ]
+
+# Labels para el resumen visual
+SCORE_LABELS = {
+    10: ("🔴", "Downgrade / Default / Estrés"),
+    9:  ("🟣", "Fusión / Adquisición / Control"),
+    8:  ("🟠", "Upgrade / Outlook Neg. / Resultado / Multa"),
+    7:  ("🔵", "Outlook Pos. / Clasificadora / Emisión"),
+    6:  ("🟡", "Perspectiva / Regulatorio / Fondos AUM"),
+    5:  ("⚪", "Calificación / Hecho Importancia / Macro"),
+    4:  ("🏗",  "CAPEX / Resultados / Fondos Operativo"),
+    3:  ("📄", "Deuda / Financiamiento / Accionaria"),
+    2:  ("📌", "Analistas / Expansión / Proyectos"),
+    1:  ("📊", "Resultados Generales / Baja Prioridad"),
+}
 
 def calcular_score(titulo):
     titulo_lower = titulo.lower()
@@ -212,6 +379,8 @@ PALABRAS_CREDITICIAS = [
     'deuda','bonos','emision','emisión','sindicado','hecho de importancia',
     'aumento de capital','soberano','riesgo pais','riesgo país','spread',
     'deuda de largo plazo','notas de deuda','bonos de largo plazo',
+    'fusion','fusión','adquisicion','adquisición','default',
+    'pacific credit rating','apoyo & asociados','moody local',
 ]
 
 PALABRAS_IGNORAR = {
@@ -384,7 +553,6 @@ def titulo_relevante_para_emisor(titulo, emisor):
     if not titulo_es_relevante_financiero(titulo):
         return False
 
-    # BBVA México: aceptar noticias del downgrade soberano de México
     if 'bbva' in nombre_lower and 'mexico' in nombre_lower:
         CONTEXTO_BBVA_MX = [
             'bbva','mexico','méxico','banamex','moody','fitch','s&p',
@@ -393,7 +561,6 @@ def titulo_relevante_para_emisor(titulo, emisor):
         ]
         return any(c in titulo_lower for c in CONTEXTO_BBVA_MX)
 
-    # Financiera Efectiva / Banco Efectiva
     if 'efectiva' in nombre_lower or 'banco efectiva' in nombre_lower:
         CONTEXTO_EFECTIVA = [
             'efectiva','banco efectiva','financiera efectiva',
@@ -402,28 +569,23 @@ def titulo_relevante_para_emisor(titulo, emisor):
         ]
         return any(c in titulo_lower for c in CONTEXTO_EFECTIVA)
 
-    # Auna: word boundary estricto
     if 'auna' in nombre_lower and len(limpiar_nombre(emisor)) < 12:
         return bool(re.search(r'\bauna\b', titulo_lower))
 
-    # Fondos extranjeros: nombre exacto
     if es_emisor_extranjero(emisor):
         variantes = variantes_emisor(emisor)
         termino = variantes[0].lower() if variantes else nombre_lower
         return termino in titulo_lower
 
-    # Soberanos: contenido financiero
     if es_emisor_soberano(emisor):
         return any(t in titulo_lower for t in TEMAS_FINANCIEROS_SOBERANOS)
 
-    # Banco de la Nacion: excluir países
     if 'banco de la nacion' in nombre_lower or 'banco de la nación' in nombre_lower:
         for pais in PAISES_EXTRANJEROS:
             if pais in titulo_lower:
                 return False
         return True
 
-    # Rutas de Lima: contexto concesión
     if 'rutas de lima' in nombre_lower:
         CONTEXTO_RUTAS = [
             'rutas de lima','concesion','concesión','peaje',
@@ -433,7 +595,6 @@ def titulo_relevante_para_emisor(titulo, emisor):
         ]
         return any(c in titulo_lower for c in CONTEXTO_RUTAS)
 
-    # Verificar alias exacto en título
     nombres = variantes_emisor(emisor)
     termino_exacto = nombres[0].lower() if nombres else nombre_lower
     alias_tokens = [w.lower() for w in termino_exacto.split() if len(w) > 3][:2]
@@ -442,7 +603,6 @@ def titulo_relevante_para_emisor(titulo, emisor):
         if matches_alias < len(alias_tokens):
             return False
 
-    # Excluir países extranjeros en contexto diferente
     for pais in ['argentina', 'colombi', 'bogota', 'bogotá']:
         if pais in titulo_lower:
             if termino_exacto not in titulo_lower:
@@ -629,8 +789,8 @@ def buscar_google_news(emisor):
     termino_exacto = f'"{termino_base}"'
 
     queries = [
-        (f'{termino_exacto} (downgrade OR upgrade OR outlook OR rating OR Moody OR Fitch OR "S&P" OR perspectiva OR calificacion OR "deuda de largo plazo" OR bonos OR sindicado OR multa)', True),
-        (f'{termino_exacto} (finanzas OR resultados OR BVL OR SMV OR inversión OR utilidad OR "notas de deuda" OR capex OR ebitda OR trimestre)', False),
+        (f'{termino_exacto} (downgrade OR upgrade OR outlook OR rating OR Moody OR Fitch OR "S&P" OR "Pacific Credit Rating" OR "Apoyo & Asociados" OR perspectiva OR calificacion OR "deuda de largo plazo" OR bonos OR sindicado OR multa OR fusion OR adquisicion OR default)', True),
+        (f'{termino_exacto} (finanzas OR resultados OR BVL OR SMV OR inversión OR utilidad OR "notas de deuda" OR capex OR ebitda OR trimestre OR dividendo OR "hecho de importancia")', False),
         (termino_exacto, False),
     ]
     for query, es_credit in queries:
@@ -668,12 +828,24 @@ def buscar_google_news(emisor):
 # ============================================================
 # 11. RESUMEN IA POR EMISOR
 # ============================================================
+PROMPT_CRITERIOS = """Criterios de priorización (en orden):
+1. Downgrade/default/estrés financiero/restricción rescates fondos
+2. Fusiones/adquisiciones/cambios de control
+3. Upgrade/outlook negativo/resultados fuera expectativas/multas graves
+4. Outlook positivo/informes clasificadoras/nuevas emisiones deuda
+5. Cambios regulatorios/AUM fondos/perspectiva general
+6. CAPEX/resultados financieros/cambios operativos fondos
+7. Financiamiento/estructura accionaria
+8. Analistas/expansión/proyectos generales"""
+
 def generar_resumen_ia(emisor, noticias):
     if not noticias:
         return None
     titulos = "\n".join([f"- {n['titulo']} ({n['fecha']})" for n in noticias])
-    prompt = f"""Eres un analista de crédito senior. Basándote SOLO en estos titulares del emisor "{limpiar_nombre(emisor)}", genera un resumen ejecutivo en español de máximo 2 oraciones (60 palabras).
-Prioriza: downgrades/upgrades de rating de deuda, cambios de outlook/perspectiva, emisiones de deuda de largo plazo, multas graves, CAPEX relevante, resultados materiales.
+    prompt = f"""Eres un analista de inversiones senior. Basándote SOLO en estos titulares del emisor "{limpiar_nombre(emisor)}", genera un resumen ejecutivo en español de máximo 2 oraciones (60 palabras).
+
+{PROMPT_CRITERIOS}
+
 NO inventes. USA SOLO lo que está en los titulares.
 Titulares:\n{titulos}\nResponde SOLO con el resumen."""
     try:
@@ -696,7 +868,7 @@ Titulares:\n{titulos}\nResponde SOLO con el resumen."""
         return None
 
 # ============================================================
-# 12. RESUMEN CONSOLIDADO DEL PORTAFOLIO (máximo 10)
+# 12. RESUMEN CONSOLIDADO (máximo 10, score >= 5)
 # ============================================================
 def generar_resumen_portafolio(resultados_por_segmento):
     noticias_criticas = []
@@ -718,7 +890,7 @@ def generar_resumen_portafolio(resultados_por_segmento):
                     })
 
     noticias_criticas.sort(key=lambda x: -(10 if x["alerta"] else x["score"]))
-    top = noticias_criticas[:10]  # máximo 10
+    top = noticias_criticas[:10]
 
     if not top:
         return None, []
@@ -727,17 +899,13 @@ def generar_resumen_portafolio(resultados_por_segmento):
         f"- [{x['emisor']} / {x['segmento']}] {x['titulo']} ({x['fecha']})"
         for x in top
     ])
-    prompt = f"""Eres un analista de crédito senior de un fondo de inversión peruano.
+
+    prompt = f"""Eres un analista de inversiones senior de un fondo peruano.
 Basándote SOLO en estos titulares del portafolio, genera un resumen ejecutivo en español de máximo 5 oraciones (150 palabras).
-Prioriza estrictamente:
-1. Downgrades de calificación crediticia de deuda
-2. Upgrades de calificación crediticia de deuda
-3. Cambios de outlook/perspectiva de deuda (negativo antes que positivo)
-4. Emisiones de deuda de largo plazo, bonos o notas de deuda
-5. Multas o sanciones graves
-6. Inversiones relevantes en CAPEX
-7. Resultados financieros materiales
-Menciona los emisores por nombre. NO inventes.
+
+{PROMPT_CRITERIOS}
+
+Menciona los emisores por nombre. NO inventes. USA SOLO los titulares.
 Titulares:\n{lineas}\nResponde SOLO con el resumen ejecutivo."""
 
     resumen_texto = None
@@ -785,8 +953,8 @@ def obtener_noticias(emisor):
         nombres = variantes_emisor(emisor)
         termino = f'"{nombres[0]}"' if nombres else f'"{limpiar_nombre(emisor)}"'
         titulos_vistos = {n["titulo"] for n in resultado}
-        for fq in [f'{termino} finanzas deuda bonos resultados Peru',
-                   f'{termino} financiero crediticio calificacion']:
+        for fq in [f'{termino} finanzas deuda bonos resultados Peru clasificacion',
+                   f'{termino} financiero crediticio calificacion ebitda']:
             if len(resultado) >= 3: break
             try:
                 url = f"https://news.google.com/rss/search?q={urllib.parse.quote(fq)}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:m,sbd:1"
@@ -812,7 +980,8 @@ def obtener_noticias(emisor):
                         'financier','econom','banco','credito','crédito','inversion',
                         'inversión','deuda','bonos','resultado','utilidad','ganancia',
                         'ebitda','trimestre','rating','calificacion','moody','fitch',
-                        'bolsa','accion','deuda de largo plazo','notas de deuda'])
+                        'bolsa','accion','deuda de largo plazo','notas de deuda',
+                        'fusion','adquisicion','dividendo','capex'])
                     if not tiene_fin: continue
                     titulos_vistos.add(titulo)
                     resultado.append({
@@ -852,9 +1021,11 @@ def badge_fuente(fuente):
 
 def dot_color(n):
     score = n.get("score", 0)
-    if n.get("alerta") or score >= 9: return "bg-red-500"
-    if score >= 7:                     return "bg-orange-500"
-    if score >= 5:                     return "bg-yellow-500"
+    if n.get("alerta") or score >= 10: return "bg-red-500"
+    if score >= 9:                      return "bg-purple-500"
+    if score >= 8:                      return "bg-orange-500"
+    if score >= 7:                      return "bg-blue-400"
+    if score >= 5:                      return "bg-yellow-500"
     if "bvl"       in n["fuente"].lower(): return "bg-blue-500"
     if "smv"       in n["fuente"].lower(): return "bg-indigo-500"
     if "bloomberg" in n["fuente"].lower(): return "bg-orange-400"
@@ -935,19 +1106,6 @@ def render_tab_todos(resumen_portafolio, noticias_criticas_top):
     if not noticias_criticas_top and not resumen_portafolio:
         return '<div class="text-gray-500 text-sm italic p-8 text-center">Sin noticias materiales estas 2 semanas.</div>'
 
-    SCORE_LABELS = {
-        10: ("🔴", "Downgrade"),
-        9:  ("🟢", "Upgrade"),
-        8:  ("🟠", "Outlook Negativo"),
-        7:  ("🔵", "Outlook Positivo"),
-        6:  ("🟡", "Cambio Perspectiva"),
-        5:  ("⚪", "Acción Crediticia"),
-        4:  ("🔺", "Riesgo Reputacional"),
-        3:  ("📄", "Deuda / Emisión"),
-        2:  ("🏗",  "CAPEX / Inversión"),
-        1:  ("📊", "Resultados"),
-    }
-
     resumen_bloque = ""
     if resumen_portafolio:
         resumen_bloque = f"""
@@ -965,8 +1123,12 @@ def render_tab_todos(resumen_portafolio, noticias_criticas_top):
         icono, tipo = SCORE_LABELS.get(score, ("•", "General"))
         if alerta or score >= 10:
             row_bg, txt = "bg-red-950/20 border-red-500/30", "text-red-200"
+        elif score >= 9:
+            row_bg, txt = "bg-purple-950/20 border-purple-500/30", "text-purple-200"
         elif score >= 8:
             row_bg, txt = "bg-orange-950/20 border-orange-500/30", "text-orange-200"
+        elif score >= 7:
+            row_bg, txt = "bg-blue-950/20 border-blue-500/30", "text-blue-200"
         elif score >= 5:
             row_bg, txt = "bg-yellow-950/10 border-yellow-600/20", "text-yellow-100"
         else:
@@ -1001,7 +1163,7 @@ def render_tab_todos(resumen_portafolio, noticias_criticas_top):
       <h2 class="text-base font-bold text-white mb-4 flex items-center gap-2">
         <span class="w-2 h-2 rounded-full bg-violet-400 inline-block"></span>
         Resumen Ejecutivo del Portafolio
-        <span class="text-[10px] text-gray-500 font-normal ml-1">— Últimas 2 semanas · {len(noticias_criticas_top)} eventos materiales</span>
+        <span class="text-[10px] text-gray-500 font-normal ml-1">— Últimas 2 semanas · Top {len(noticias_criticas_top)} eventos materiales</span>
       </h2>
       {resumen_bloque}
       <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
@@ -1132,22 +1294,25 @@ page = f"""<!DOCTYPE html>
 
   <div class="flex flex-wrap gap-3 mb-6 text-xs">
     <span class="flex items-center gap-1.5 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg">
-      <span class="w-2 h-2 rounded-full bg-red-500"></span> Alerta crediticia
+      <span class="w-2 h-2 rounded-full bg-red-500"></span> Downgrade/Default/Estrés
     </span>
     <span class="flex items-center gap-1.5 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg">
-      <span class="w-2 h-2 rounded-full bg-blue-500"></span> BVL Oficial
+      <span class="w-2 h-2 rounded-full bg-purple-500"></span> Fusión/Adquisición
     </span>
     <span class="flex items-center gap-1.5 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg">
-      <span class="w-2 h-2 rounded-full bg-indigo-500"></span> SMV
+      <span class="w-2 h-2 rounded-full bg-orange-500"></span> Upgrade/Outlook Neg./Multa
     </span>
     <span class="flex items-center gap-1.5 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg">
-      <span class="w-2 h-2 rounded-full bg-orange-500"></span> Bloomberg Línea
+      <span class="w-2 h-2 rounded-full bg-blue-400"></span> Clasificadora/Emisión Deuda
     </span>
     <span class="flex items-center gap-1.5 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg">
-      <span class="w-2 h-2 rounded-full bg-gray-500"></span> Prensa general
+      <span class="w-2 h-2 rounded-full bg-yellow-500"></span> Perspectiva/Regulatorio
     </span>
     <span class="flex items-center gap-1.5 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg">
-      🔴 Riesgo Alto &nbsp;·&nbsp; 🟡 Riesgo Moderado &nbsp;·&nbsp; 🟢 Riesgo Bajo
+      <span class="w-2 h-2 rounded-full bg-gray-500"></span> General
+    </span>
+    <span class="flex items-center gap-1.5 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg">
+      🔴 Riesgo Alto &nbsp;·&nbsp; 🟡 Moderado &nbsp;·&nbsp; 🟢 Bajo
     </span>
     <span class="flex items-center gap-1.5 bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg">
       <span class="text-violet-300">✦</span> Resumen IA
