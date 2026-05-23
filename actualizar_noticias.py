@@ -63,6 +63,7 @@ SEMAFORO = {
     "MIBANCO":                              "verde",
     "BANCO GNB PERU S.A.":                  "amarillo",
     "FINANCIERA EFECTIVA S.A.":             "amarillo",
+    "BANCO EFECTIVA":                       "amarillo",
     "CERRO VERDE":                          "verde",
     "SOUTHERN PERU COPPER CORPORATION":     "verde",
     "ACEROS AREQUIPA":                      "verde",
@@ -97,6 +98,7 @@ def semaforo_html(color):
 # 3. SCORING GRANULAR
 # ============================================================
 EMISORES_PRIORITARIOS = ["rutas de lima", "auna"]
+SCORE_MINIMO_RESUMEN  = 5  # Solo noticias materiales en tab Resumen
 
 SCORING_NOTICIAS = [
     (10, ['downgrade','rebaja','rebaja de calificacion','rebaja calificacion',
@@ -133,7 +135,7 @@ SCORING_NOTICIAS = [
           'notas de deuda','calificacion de bonos','calificacion de deuda']),
     (4,  ['multa','sancion','sanción','demanda','denuncia',
           'investigacion','investigación','fraude','corrupcion','corrupción',
-          'escandalo','escándalo','indecopi','sbs','smv','regulador',
+          'escandalo','escándalo','indecopi','sbs','regulador',
           'incumplimiento','default','quiebra','concurso de acreedores',
           'riesgo reputacional','contingencia legal','proceso judicial']),
     (3,  ['bonos','bono','deuda','deuda corporativa','deuda de largo plazo',
@@ -177,9 +179,6 @@ ALERTAS_REALES = [
     "standard & poor rebaja","standard & poor eleva",
     "moody rebaja","moody eleva","moody baja","moody sube","moody coloca",
 ]
-
-# Score mínimo para aparecer en el resumen de "Todos"
-SCORE_MINIMO_RESUMEN = 3  # Solo noticias de deuda, rating, multas, capex o resultados
 
 def calcular_score(titulo):
     titulo_lower = titulo.lower()
@@ -266,8 +265,6 @@ PAISES_EXTRANJEROS = [
     'venezuela','ecuador','bolivia','uruguay','paraguay'
 ]
 
-# FIX (iv): Alias con nombres EXACTOS para búsqueda precisa
-# NO usar términos adicionales que contaminan — el nombre limpio es el mejor filtro
 ALIAS_EMISORES = {
     "jockey plaza":        "Jockey Plaza",
     "real plaza":          "Real Plaza",
@@ -289,7 +286,8 @@ ALIAS_EMISORES = {
     "banco de la nacion":  "Banco de la Nación Perú",
     "banco gnb":           "Banco GNB Perú",
     "mibanco":             "Mibanco",
-    "financiera efectiva": "Financiera Efectiva",
+    "financiera efectiva": "Banco Efectiva",
+    "banco efectiva":      "Banco Efectiva",
     "bbva peru":           "BBVA Perú",
     "bbva mexico":         "BBVA México",
     "scotiabank":          "Scotiabank Perú",
@@ -319,7 +317,6 @@ ALIAS_EMISORES = {
     "republica del peru":  "República del Perú",
 }
 
-# FIX (iii): 2 semanas en lugar de 1
 LIMITE_FECHA  = datetime.now() - timedelta(days=14)
 fecha_reporte = datetime.now().strftime("%d/%m/%Y %H:%M")
 cache_prioritarias = []
@@ -383,12 +380,27 @@ def titulo_es_relevante_financiero(titulo):
 def titulo_relevante_para_emisor(titulo, emisor):
     titulo_lower = titulo.lower()
     nombre_lower = limpiar_nombre(emisor).lower()
+
     if not titulo_es_relevante_financiero(titulo):
         return False
 
-    # FIX (iv): Coincidencia exacta usando el alias limpio del emisor
-    nombres = variantes_emisor(emisor)
-    termino_exacto = nombres[0].lower() if nombres else nombre_lower
+    # BBVA México: aceptar noticias del downgrade soberano de México
+    if 'bbva' in nombre_lower and 'mexico' in nombre_lower:
+        CONTEXTO_BBVA_MX = [
+            'bbva','mexico','méxico','banamex','moody','fitch','s&p',
+            'downgrade','upgrade','calificacion','rating','perspectiva',
+            'outlook','deuda','bonos','soberano','banco','rebaja','eleva'
+        ]
+        return any(c in titulo_lower for c in CONTEXTO_BBVA_MX)
+
+    # Financiera Efectiva / Banco Efectiva
+    if 'efectiva' in nombre_lower or 'banco efectiva' in nombre_lower:
+        CONTEXTO_EFECTIVA = [
+            'efectiva','banco efectiva','financiera efectiva',
+            'sbs','conversion','conversión','bancario','autoriza',
+            'calificacion','rating','deuda','bonos','resultado','banco'
+        ]
+        return any(c in titulo_lower for c in CONTEXTO_EFECTIVA)
 
     # Auna: word boundary estricto
     if 'auna' in nombre_lower and len(limpiar_nombre(emisor)) < 12:
@@ -396,7 +408,9 @@ def titulo_relevante_para_emisor(titulo, emisor):
 
     # Fondos extranjeros: nombre exacto
     if es_emisor_extranjero(emisor):
-        return termino_exacto in titulo_lower
+        variantes = variantes_emisor(emisor)
+        termino = variantes[0].lower() if variantes else nombre_lower
+        return termino in titulo_lower
 
     # Soberanos: contenido financiero
     if es_emisor_soberano(emisor):
@@ -411,26 +425,24 @@ def titulo_relevante_para_emisor(titulo, emisor):
 
     # Rutas de Lima: contexto concesión
     if 'rutas de lima' in nombre_lower:
-        CONTEXTO_RUTAS = ['rutas de lima','concesion','concesión','peaje',
-                          'deuda','bonos','financiamiento','rating','calificacion',
-                          'moody','fitch','resultado','utilidad','inversion',
-                          'proyecto vial','deuda de largo plazo','notas de deuda',
-                          'brookfield','incumplimiento']
+        CONTEXTO_RUTAS = [
+            'rutas de lima','concesion','concesión','peaje',
+            'deuda','bonos','financiamiento','rating','calificacion',
+            'moody','fitch','resultado','utilidad','inversion',
+            'proyecto vial','deuda de largo plazo','brookfield','incumplimiento'
+        ]
         return any(c in titulo_lower for c in CONTEXTO_RUTAS)
 
-    # FIX (iv): Para todos los demás — el título DEBE contener el término exacto del alias
-    # Esto evita falsos positivos de emisores con nombres similares
-    tokens = tokens_significativos(emisor)
-
-    # Si tiene alias específico, exigir que esté en el título
-    if nombres and nombres[0] in ALIAS_EMISORES.values():
-        # Usar los primeros 2 tokens del alias como verificación
-        alias_tokens = [w.lower() for w in nombres[0].split() if len(w) > 3][:2]
+    # Verificar alias exacto en título
+    nombres = variantes_emisor(emisor)
+    termino_exacto = nombres[0].lower() if nombres else nombre_lower
+    alias_tokens = [w.lower() for w in termino_exacto.split() if len(w) > 3][:2]
+    if len(alias_tokens) >= 2:
         matches_alias = sum(1 for t in alias_tokens if t in titulo_lower)
-        if len(alias_tokens) >= 2 and matches_alias < len(alias_tokens):
+        if matches_alias < len(alias_tokens):
             return False
 
-    # Verificar países extranjeros en contexto diferente
+    # Excluir países extranjeros en contexto diferente
     for pais in ['argentina', 'colombi', 'bogota', 'bogotá']:
         if pais in titulo_lower:
             if termino_exacto not in titulo_lower:
@@ -451,7 +463,6 @@ def variantes_emisor(emisor):
     variantes = []
     emisor_lower = emisor_clean.lower()
 
-    # Alias: priorizar match más largo y específico
     mejor_alias, mejor_len = None, 0
     for clave, alias in ALIAS_EMISORES.items():
         if clave.strip() in emisor_lower and len(clave) > mejor_len:
@@ -574,7 +585,6 @@ def buscar_en_cache_prioritarias(emisor):
 def buscar_bloomberg_linea(emisor):
     resultados = []
     nombres = variantes_emisor(emisor)
-    # FIX (iv): usar comillas para búsqueda exacta
     termino = f'"{nombres[0]}"' if nombres else f'"{limpiar_nombre(emisor)}"'
     tokens  = tokens_significativos(emisor)
     minimo  = calcular_minimo(tokens)
@@ -607,7 +617,7 @@ def buscar_bloomberg_linea(emisor):
     return resultados
 
 # ============================================================
-# 10. GOOGLE NEWS — búsqueda exacta con comillas
+# 10. GOOGLE NEWS
 # ============================================================
 def buscar_google_news(emisor):
     resultados, vistos = [], set()
@@ -615,68 +625,57 @@ def buscar_google_news(emisor):
     tokens    = tokens_significativos(emisor)
     minimo    = calcular_minimo(tokens)
     con_alias = usa_alias(emisor)
-
-    # FIX (iv): usar comillas para coincidir exactamente con el nombre del emisor
-    termino_base = nombres[0] if nombres else limpiar_nombre(emisor)
+    termino_base   = nombres[0] if nombres else limpiar_nombre(emisor)
     termino_exacto = f'"{termino_base}"'
 
-    for termino_q in [termino_exacto]:  # Solo búsqueda exacta
+    queries = [
+        (f'{termino_exacto} (downgrade OR upgrade OR outlook OR rating OR Moody OR Fitch OR "S&P" OR perspectiva OR calificacion OR "deuda de largo plazo" OR bonos OR sindicado OR multa)', True),
+        (f'{termino_exacto} (finanzas OR resultados OR BVL OR SMV OR inversión OR utilidad OR "notas de deuda" OR capex OR ebitda OR trimestre)', False),
+        (termino_exacto, False),
+    ]
+    for query, es_credit in queries:
         if len(resultados) >= 3: break
-        queries = [
-            (f'{termino_q} (downgrade OR upgrade OR outlook OR rating OR Moody OR Fitch OR "S&P" OR perspectiva OR calificacion OR "deuda de largo plazo" OR bonos OR sindicado OR multa)', True),
-            (f'{termino_q} (finanzas OR resultados OR BVL OR SMV OR inversión OR utilidad OR "notas de deuda" OR capex OR ebitda OR trimestre)', False),
-            (termino_q, False),
-        ]
-        for query, es_credit in queries:
-            if len(resultados) >= 3: break
-            try:
-                # FIX (iii): tbs=qdr:2w = últimas 2 semanas
-                url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:m,sbd:1"
-                req = urllib.request.Request(url, headers=HEADERS)
-                with urllib.request.urlopen(req, context=contexto, timeout=10) as res:
-                    data = res.read().decode('utf-8', errors='ignore')
-                for item in re.findall(r'<item>([\s\S]*?)</item>', data)[:8]:
-                    t = re.search(r'<title><!\[CDATA\[(.*?)\]\]></title>|<title>(.*?)</title>', item)
-                    l = re.search(r'<link>(.*?)</link>', item)
-                    d = re.search(r'<pubDate>(.*?)</pubDate>', item)
-                    s = re.search(r'<source[^>]*>(.*?)</source>', item)
-                    titulo = (t.group(1) or t.group(2) or "").strip() if t else ""
-                    link   = l.group(1).strip() if l else "#"
-                    fecha  = d.group(1).strip() if d else ""
-                    fuente = (s.group(1) or "Prensa").strip() if s else "Prensa"
-                    if not titulo or titulo in vistos: continue
-                    # FIX (iii): validar fecha contra LIMITE_FECHA (14 días)
-                    if not es_reciente(fecha): continue
-                    if not con_alias:
-                        matches = sum(1 for tk in tokens if tk in titulo.lower())
-                        if matches < minimo: continue
-                    if not titulo_relevante_para_emisor(titulo, emisor): continue
-                    vistos.add(titulo)
-                    resultados.append({
-                        "titulo": titulo, "fuente": fuente,
-                        "link": link, "fecha": formatear_fecha(fecha),
-                        "alerta": es_alerta_real(titulo)
-                    })
-            except Exception:
-                pass
+        try:
+            url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=es-419&gl=PE&ceid=PE:es-419&tbs=qdr:m,sbd:1"
+            req = urllib.request.Request(url, headers=HEADERS)
+            with urllib.request.urlopen(req, context=contexto, timeout=10) as res:
+                data = res.read().decode('utf-8', errors='ignore')
+            for item in re.findall(r'<item>([\s\S]*?)</item>', data)[:8]:
+                t = re.search(r'<title><!\[CDATA\[(.*?)\]\]></title>|<title>(.*?)</title>', item)
+                l = re.search(r'<link>(.*?)</link>', item)
+                d = re.search(r'<pubDate>(.*?)</pubDate>', item)
+                s = re.search(r'<source[^>]*>(.*?)</source>', item)
+                titulo = (t.group(1) or t.group(2) or "").strip() if t else ""
+                link   = l.group(1).strip() if l else "#"
+                fecha  = d.group(1).strip() if d else ""
+                fuente = (s.group(1) or "Prensa").strip() if s else "Prensa"
+                if not titulo or titulo in vistos: continue
+                if not es_reciente(fecha): continue
+                if not con_alias:
+                    matches = sum(1 for tk in tokens if tk in titulo.lower())
+                    if matches < minimo: continue
+                if not titulo_relevante_para_emisor(titulo, emisor): continue
+                vistos.add(titulo)
+                resultados.append({
+                    "titulo": titulo, "fuente": fuente,
+                    "link": link, "fecha": formatear_fecha(fecha),
+                    "alerta": es_alerta_real(titulo)
+                })
+        except Exception:
+            pass
     return resultados[:3]
 
 # ============================================================
-# 11. GENERAR RESUMEN IA POR EMISOR
+# 11. RESUMEN IA POR EMISOR
 # ============================================================
 def generar_resumen_ia(emisor, noticias):
     if not noticias:
         return None
     titulos = "\n".join([f"- {n['titulo']} ({n['fecha']})" for n in noticias])
     prompt = f"""Eres un analista de crédito senior. Basándote SOLO en estos titulares del emisor "{limpiar_nombre(emisor)}", genera un resumen ejecutivo en español de máximo 2 oraciones (60 palabras).
-
-Prioriza: downgrades/upgrades de rating de deuda, cambios de outlook/perspectiva, emisiones de deuda de largo plazo o bonos, multas graves, CAPEX relevante, resultados financieros materiales.
+Prioriza: downgrades/upgrades de rating de deuda, cambios de outlook/perspectiva, emisiones de deuda de largo plazo, multas graves, CAPEX relevante, resultados materiales.
 NO inventes. USA SOLO lo que está en los titulares.
-
-Titulares:
-{titulos}
-
-Responde SOLO con el resumen, sin introducción."""
+Titulares:\n{titulos}\nResponde SOLO con el resumen."""
     try:
         payload = json.dumps({
             "model": "claude-sonnet-4-20250514",
@@ -693,12 +692,11 @@ Responde SOLO con el resumen, sin introducción."""
             data = json.loads(res.read().decode('utf-8'))
             return data.get("content", [{}])[0].get("text", "").strip()
     except Exception as e:
-        print(f"     ⚠ Resumen IA no disponible: {e}")
+        print(f"     ⚠ Resumen IA: {e}")
         return None
 
 # ============================================================
-# 12. RESUMEN CONSOLIDADO PARA TAB "TODOS"
-# FIX (ii): Solo noticias materiales, sin tarjetas individuales
+# 12. RESUMEN CONSOLIDADO DEL PORTAFOLIO (máximo 10)
 # ============================================================
 def generar_resumen_portafolio(resultados_por_segmento):
     noticias_criticas = []
@@ -707,21 +705,20 @@ def generar_resumen_portafolio(resultados_por_segmento):
             for n in noticias:
                 score = n.get("score", 0)
                 alerta = n.get("alerta", False)
-                # Solo noticias materiales: score >= SCORE_MINIMO_RESUMEN
                 if alerta or score >= SCORE_MINIMO_RESUMEN:
                     noticias_criticas.append({
-                        "emisor":    limpiar_nombre(emisor),
-                        "segmento":  seg,
-                        "titulo":    n["titulo"],
-                        "link":      n["link"],
-                        "fecha":     n["fecha"],
-                        "fuente":    n["fuente"],
-                        "score":     score,
-                        "alerta":    alerta,
+                        "emisor":   limpiar_nombre(emisor),
+                        "segmento": seg,
+                        "titulo":   n["titulo"],
+                        "link":     n["link"],
+                        "fecha":    n["fecha"],
+                        "fuente":   n["fuente"],
+                        "score":    score,
+                        "alerta":   alerta,
                     })
 
     noticias_criticas.sort(key=lambda x: -(10 if x["alerta"] else x["score"]))
-    top = noticias_criticas[:15]
+    top = noticias_criticas[:10]  # máximo 10
 
     if not top:
         return None, []
@@ -730,10 +727,8 @@ def generar_resumen_portafolio(resultados_por_segmento):
         f"- [{x['emisor']} / {x['segmento']}] {x['titulo']} ({x['fecha']})"
         for x in top
     ])
-
     prompt = f"""Eres un analista de crédito senior de un fondo de inversión peruano.
 Basándote SOLO en estos titulares del portafolio, genera un resumen ejecutivo en español de máximo 5 oraciones (150 palabras).
-
 Prioriza estrictamente:
 1. Downgrades de calificación crediticia de deuda
 2. Upgrades de calificación crediticia de deuda
@@ -742,13 +737,8 @@ Prioriza estrictamente:
 5. Multas o sanciones graves
 6. Inversiones relevantes en CAPEX
 7. Resultados financieros materiales
-
-Menciona los emisores por nombre. NO inventes. USA SOLO lo que está en los titulares.
-
-Titulares:
-{lineas}
-
-Responde SOLO con el resumen ejecutivo, sin títulos."""
+Menciona los emisores por nombre. NO inventes.
+Titulares:\n{lineas}\nResponde SOLO con el resumen ejecutivo."""
 
     resumen_texto = None
     try:
@@ -767,7 +757,7 @@ Responde SOLO con el resumen ejecutivo, sin títulos."""
             data = json.loads(res.read().decode('utf-8'))
             resumen_texto = data.get("content", [{}])[0].get("text", "").strip()
     except Exception as e:
-        print(f"  ⚠ Resumen portafolio IA no disponible: {e}")
+        print(f"  ⚠ Resumen portafolio: {e}")
 
     return resumen_texto, top
 
@@ -791,7 +781,6 @@ def obtener_noticias(emisor):
 
     resultado.sort(key=lambda x: -(10 if x.get("alerta") else x.get("score", 0)))
 
-    # Fallback mínimo 3
     if len(resultado) < 3:
         nombres = variantes_emisor(emisor)
         termino = f'"{nombres[0]}"' if nombres else f'"{limpiar_nombre(emisor)}"'
@@ -901,10 +890,8 @@ def render_cards(emisores_con_noticias, seg):
         if resumen:
             resumen_html = f"""
             <div class="bg-gray-800/60 border border-gray-700/50 rounded-lg p-2.5 mb-1">
-              <div class="flex items-center gap-1.5 mb-1">
-                <span class="text-[9px] bg-violet-500/20 border border-violet-500/30 text-violet-300 px-1.5 py-0.5 rounded font-bold">✦ Resumen IA</span>
-              </div>
-              <p class="text-[11px] text-gray-300 leading-snug italic">{html.escape(resumen)}</p>
+              <span class="text-[9px] bg-violet-500/20 border border-violet-500/30 text-violet-300 px-1.5 py-0.5 rounded font-bold">✦ Resumen IA</span>
+              <p class="text-[11px] text-gray-300 leading-snug italic mt-1">{html.escape(resumen)}</p>
             </div>"""
 
         noticias_html = []
@@ -944,20 +931,9 @@ def render_cards(emisores_con_noticias, seg):
           </div>""")
     return ''.join(cards)
 
-# FIX (ii): Tab "Todos" solo muestra resumen, no tarjetas individuales
 def render_tab_todos(resumen_portafolio, noticias_criticas_top):
     if not noticias_criticas_top and not resumen_portafolio:
-        return '<div class="text-gray-500 text-sm italic p-8 text-center">Sin noticias materiales esta semana.</div>'
-
-    resumen_bloque = ""
-    if resumen_portafolio:
-        resumen_bloque = f"""
-      <div class="mb-6 pb-5 border-b border-gray-700/50">
-        <div class="flex items-center gap-2 mb-3">
-          <span class="text-[10px] bg-violet-500/20 border border-violet-500/30 text-violet-300 px-2 py-0.5 rounded font-bold">✦ Análisis IA del Portafolio</span>
-        </div>
-        <p class="text-sm text-gray-200 leading-relaxed">{html.escape(resumen_portafolio)}</p>
-      </div>"""
+        return '<div class="text-gray-500 text-sm italic p-8 text-center">Sin noticias materiales estas 2 semanas.</div>'
 
     SCORE_LABELS = {
         10: ("🔴", "Downgrade"),
@@ -968,34 +944,40 @@ def render_tab_todos(resumen_portafolio, noticias_criticas_top):
         5:  ("⚪", "Acción Crediticia"),
         4:  ("🔺", "Riesgo Reputacional"),
         3:  ("📄", "Deuda / Emisión"),
-        2:  ("🏗", "CAPEX / Inversión"),
+        2:  ("🏗",  "CAPEX / Inversión"),
         1:  ("📊", "Resultados"),
     }
+
+    resumen_bloque = ""
+    if resumen_portafolio:
+        resumen_bloque = f"""
+      <div class="mb-5 pb-5 border-b border-gray-700/50">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-[10px] bg-violet-500/20 border border-violet-500/30 text-violet-300 px-2 py-0.5 rounded font-bold">✦ Análisis IA del Portafolio</span>
+        </div>
+        <p class="text-sm text-gray-200 leading-relaxed">{html.escape(resumen_portafolio)}</p>
+      </div>"""
 
     items_html = ""
     for n in noticias_criticas_top:
         score = n.get("score", 0)
         alerta = n.get("alerta", False)
         icono, tipo = SCORE_LABELS.get(score, ("•", "General"))
-        if alerta and score >= 9:
-            row_bg = "bg-red-950/20 border-red-500/30"
-            txt    = "text-red-200"
-        elif alerta or score >= 8:
-            row_bg = "bg-orange-950/20 border-orange-500/30"
-            txt    = "text-orange-200"
+        if alerta or score >= 10:
+            row_bg, txt = "bg-red-950/20 border-red-500/30", "text-red-200"
+        elif score >= 8:
+            row_bg, txt = "bg-orange-950/20 border-orange-500/30", "text-orange-200"
         elif score >= 5:
-            row_bg = "bg-yellow-950/10 border-yellow-600/20"
-            txt    = "text-yellow-100"
+            row_bg, txt = "bg-yellow-950/10 border-yellow-600/20", "text-yellow-100"
         else:
-            row_bg = "bg-gray-800/30 border-gray-700/30"
-            txt    = "text-gray-300"
+            row_bg, txt = "bg-gray-800/30 border-gray-700/30", "text-gray-300"
 
         items_html += f"""
         <div class="flex gap-3 items-start p-3 rounded-lg border {row_bg}">
           <span class="text-base shrink-0 mt-0.5">{icono}</span>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-0.5 flex-wrap">
-              <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">{html.escape(n['emisor'])}</span>
+              <span class="text-[10px] font-bold text-gray-300 uppercase tracking-wide">{html.escape(n['emisor'])}</span>
               <span class="text-[9px] text-gray-600">·</span>
               <span class="text-[9px] text-gray-500">{html.escape(n['segmento'])}</span>
               <span class="text-[9px] text-gray-600">·</span>
@@ -1019,15 +1001,13 @@ def render_tab_todos(resumen_portafolio, noticias_criticas_top):
       <h2 class="text-base font-bold text-white mb-4 flex items-center gap-2">
         <span class="w-2 h-2 rounded-full bg-violet-400 inline-block"></span>
         Resumen Ejecutivo del Portafolio
-        <span class="text-[10px] text-gray-500 font-normal ml-1">— Últimas 2 semanas</span>
+        <span class="text-[10px] text-gray-500 font-normal ml-1">— Últimas 2 semanas · {len(noticias_criticas_top)} eventos materiales</span>
       </h2>
       {resumen_bloque}
       <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
-        Noticias Materiales ({len(noticias_criticas_top)})
+        Noticias Materiales
       </h3>
-      <div class="flex flex-col gap-2">
-        {items_html}
-      </div>
+      <div class="flex flex-col gap-2">{items_html}</div>
     </div>
   </div>"""
 
@@ -1050,18 +1030,16 @@ else:
         sobera = "🏛" if es_emisor_soberano(e) else ""
         print(f"   {limpiar_nombre(e):50s} → {v[0]:30s} {sem} {prior}{extran}{sobera}")
 
-# FIX (i): Respetar segmentos del Excel — no mezclar
 segmentos = {}
 for emisor, seg in emisores_data.items():
-    seg_normalizado = seg.strip()  # Limpiar espacios que causan duplicados
-    segmentos.setdefault(seg_normalizado, []).append(emisor)
+    seg_norm = seg.strip()
+    segmentos.setdefault(seg_norm, []).append(emisor)
 
 segs_ordenados = sorted(segmentos.keys(), key=lambda s: ORDEN_SEG.index(s) if s in ORDEN_SEG else 99)
-
-print(f"\nSegmentos detectados: {list(segmentos.keys())}")
+print(f"\nSegmentos: {list(segmentos.keys())}")
 
 # ============================================================
-# 16. PRE-CALCULAR NOTICIAS + RESUMEN IA
+# 16. PRE-CALCULAR NOTICIAS + RESÚMENES IA
 # ============================================================
 print("\n🔍 Buscando noticias y generando resúmenes...")
 resultados_por_segmento = {}
@@ -1076,7 +1054,7 @@ for seg in segs_ordenados:
         if noticias:
             resumen = generar_resumen_ia(emisor, noticias)
             emisores_con_noticias.append((emisor, noticias, resumen))
-            print(f"     ✓ {len(noticias)} noticias | resumen: {'✓' if resumen else '✗'}")
+            print(f"     ✓ {len(noticias)} noticias | IA: {'✓' if resumen else '✗'}")
         else:
             print(f"     ↳ sin noticias, omitido")
 
@@ -1084,11 +1062,8 @@ for seg in segs_ordenados:
         emisor, noticias, _ = item
         tiene_alerta = any(n.get("alerta") for n in noticias)
         mejor_score  = max((n.get("score", 0) for n in noticias), default=0)
-        return (
-            0 if es_emisor_prioritario(emisor) else 1,
-            0 if tiene_alerta else 1,
-            -mejor_score,
-        )
+        return (0 if es_emisor_prioritario(emisor) else 1,
+                0 if tiene_alerta else 1, -mejor_score)
 
     emisores_con_noticias.sort(key=sort_key_emisor)
     if emisores_con_noticias:
@@ -1096,20 +1071,19 @@ for seg in segs_ordenados:
     else:
         print(f"  ⚠ Segmento '{seg}' sin noticias, omitido")
 
-# Generar resumen del portafolio
 print("\n✦ Generando resumen ejecutivo del portafolio...")
 resumen_portafolio, noticias_criticas_top = generar_resumen_portafolio(resultados_por_segmento)
 
 # ============================================================
 # 17. CONSTRUCCIÓN HTML CON TABS
 # ============================================================
-total_emisores = sum(len(v) for v in resultados_por_segmento.values())
+total_eventos = len(noticias_criticas_top)
 
 tabs_nav = f"""
     <button onclick="mostrarTab('todos')" id="tab-btn-todos"
       class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold border transition-all
              bg-white/10 border-white/20 text-white">
-      📋 Resumen <span class="ml-1 text-[10px] opacity-60">({len(noticias_criticas_top)} eventos)</span>
+      📋 Resumen <span class="ml-1 text-[10px] opacity-60">({total_eventos} eventos)</span>
     </button>"""
 
 for seg, items in resultados_por_segmento.items():
@@ -1122,10 +1096,8 @@ for seg, items in resultados_por_segmento.items():
       {icono} {html.escape(seg)} <span class="ml-1 text-[10px] opacity-60">({len(items)})</span>
     </button>"""
 
-# FIX (ii): Tab "todos" = solo resumen ejecutivo
 tabs_content = f'<div id="tab-todos" class="tab-panel">{render_tab_todos(resumen_portafolio, noticias_criticas_top)}</div>'
 
-# Tabs por segmento = tarjetas completas
 for seg, items in resultados_por_segmento.items():
     tc  = COLOR_SEG.get(seg, ("text-gray-400",))[0]
     sid = seg.lower().replace(' ', '-')
